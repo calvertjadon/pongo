@@ -47,7 +47,7 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 // View renders the current semantic state in the alternate screen.
 func (model Model) View() tea.View {
 	return tea.View{
-		Content:   RenderTitle(model.width, model.height),
+		Content:   Render(model.application, model.width, model.height),
 		AltScreen: true,
 	}
 }

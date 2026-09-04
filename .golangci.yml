@@ -14,6 +14,7 @@ formatters:
 linters:
   default: none
   enable:
+    - depguard
     - errcheck
     - errorlint
     - exhaustive
@@ -31,6 +32,30 @@ linters:
     - unused
     - whitespace
   settings:
+    depguard:
+      rules:
+        deterministic-core:
+          files:
+            - "**/internal/core/*.go"
+          deny:
+            - pkg: "charm.land"
+              desc: the deterministic core cannot depend on Charm
+            - pkg: "github.com/charmbracelet"
+              desc: the deterministic core cannot depend on Charm
+            - pkg: "github.com/muesli/termenv"
+              desc: the deterministic core cannot inspect terminals
+            - pkg: "golang.org/x/term"
+              desc: the deterministic core cannot inspect terminals
+            - pkg: "os"
+              desc: the host shell owns operating-system access
+            - pkg: "syscall$"
+              desc: the host shell owns operating-system access
+            - pkg: "time$"
+              desc: the shell supplies elapsed time as data
+            - pkg: "math/rand"
+              desc: the deterministic core cannot use ambient randomness
+            - pkg: "crypto/rand"
+              desc: the deterministic core cannot use ambient randomness
     funlen:
       lines: 80
       statements: 40

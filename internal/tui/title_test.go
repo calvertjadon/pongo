@@ -6,13 +6,14 @@ import (
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/calvertjadon/pongo/internal/core"
 	"github.com/calvertjadon/pongo/internal/tui"
 )
 
 func TestTitleFitsMinimumTerminal(t *testing.T) {
 	t.Parallel()
 
-	view := tui.RenderTitle(80, 28)
+	view := tui.Render(core.NewModel(), 80, 28)
 	if width := lipgloss.Width(view); width != 80 {
 		t.Fatalf("title width = %d, want 80", width)
 	}
@@ -27,7 +28,7 @@ func TestTitleFitsMinimumTerminal(t *testing.T) {
 func TestTitleCentersFixedLayoutWithOddSurplus(t *testing.T) {
 	t.Parallel()
 
-	view := tui.RenderTitle(83, 31)
+	view := tui.Render(core.NewModel(), 83, 31)
 	lines := strings.Split(view, "\n")
 	row, column := locate(lines, "PONGO")
 

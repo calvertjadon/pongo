@@ -1,0 +1,45 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+formatters:
+  enable:
+    - goimports
+    - golines
+  settings:
+    golines:
+      max-len: 120
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - errorlint
+    - exhaustive
+    - funlen
+    - gochecksumtype
+    - gocognit
+    - gocritic
+    - godoclint
+    - ineffassign
+    - nilerr
+    - nolintlint
+    - predeclared
+    - revive
+    - staticcheck
+    - unused
+    - whitespace
+  settings:
+    funlen:
+      lines: 80
+      statements: 40
+    gocognit:
+      min-complexity: 20
+    staticcheck:
+      checks:
+        - "SA*"
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

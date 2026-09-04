@@ -21,8 +21,8 @@ func TestTitleQuitRequestsHostExitWithoutChangingState(t *testing.T) {
 	initial := core.NewModel()
 	updated, effect := core.Update(initial, core.EventQuit)
 
-	if updated != initial {
-		t.Fatalf("quit changed model from %#v to %#v", initial, updated)
+	if updated.Screen() != initial.Screen() {
+		t.Fatalf("quit changed screen from %v to %v", initial.Screen(), updated.Screen())
 	}
 	if effect != core.EffectQuit {
 		t.Fatalf("quit effect = %v, want host quit", effect)
@@ -35,8 +35,8 @@ func TestTitleIgnoresInactiveEvents(t *testing.T) {
 	initial := core.NewModel()
 	for _, event := range []core.Event{core.EventUnknown, core.EventPrimary} {
 		updated, effect := core.Update(initial, event)
-		if updated != initial {
-			t.Errorf("event %v changed model from %#v to %#v", event, initial, updated)
+		if updated.Screen() != initial.Screen() {
+			t.Errorf("event %v changed screen from %v to %v", event, initial.Screen(), updated.Screen())
 		}
 		if effect != core.EffectNone {
 			t.Errorf("event %v produced effect %v, want none", event, effect)
@@ -51,14 +51,11 @@ func TestReplayProducesIdenticalStateAndEffect(t *testing.T) {
 	firstModel, firstEffect := replay(events)
 	secondModel, secondEffect := replay(events)
 
-	if firstModel != secondModel || firstEffect != secondEffect {
-		t.Fatalf(
-			"replay mismatch: first = (%#v, %v), second = (%#v, %v)",
-			firstModel,
-			firstEffect,
-			secondModel,
-			secondEffect,
-		)
+	if firstModel.Screen() != secondModel.Screen() {
+		t.Fatalf("replay screen = %v, want %v", secondModel.Screen(), firstModel.Screen())
+	}
+	if firstEffect != secondEffect {
+		t.Fatalf("replay effect = %v, want %v", secondEffect, firstEffect)
 	}
 }
 

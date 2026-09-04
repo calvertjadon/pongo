@@ -37,6 +37,10 @@ linters:
         deterministic-core:
           files:
             - "**/internal/core/*.go"
+          list-mode: strict
+          allow:
+            - $gostd
+            - github.com/calvertjadon/pongo/internal/core
           deny:
             - pkg: "charm.land"
               desc: the deterministic core cannot depend on Charm
@@ -46,6 +50,10 @@ linters:
               desc: the deterministic core cannot inspect terminals
             - pkg: "golang.org/x/term"
               desc: the deterministic core cannot inspect terminals
+            - pkg: "github.com/xo/terminfo"
+              desc: the deterministic core cannot inspect terminals
+            - pkg: "golang.org/x/sys"
+              desc: the host shell owns operating-system access
             - pkg: "os"
               desc: the host shell owns operating-system access
             - pkg: "syscall$"

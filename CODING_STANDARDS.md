@@ -47,7 +47,7 @@ Every command must exit with status 0. The formatter must print no diff.
 - Assert observable semantic state and effect requests. Do not assert private field copies, terminal escape strings, or incidental wording.
 - Core tests must not start Bubble Tea, read a clock, use ambient randomness, sleep, or depend on timing tolerances.
 - Replaying identical inputs must produce identical state and effects.
-- Cover boundaries, invariants, transitions, invalid and stale events, effect correlation, reset rules, and ticket-specific failure cases when they become reachable.
+- Cover boundaries, invariants, transitions, invalid and stale events, effect correlation, collision ordering, reset rules, and ticket-specific failure cases when they become reachable.
 - Do not gate on a coverage percentage. Record coverage output and judge whether tests catch the plausible failures named by the ticket.
 
 ## Interactive verification

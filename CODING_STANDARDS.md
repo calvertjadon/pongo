@@ -64,7 +64,7 @@ Run Standards and Spec as separate reviews. Standards receives this file, reposi
 
 A review blocks only on a problem introduced by the branch or a pre-existing problem that the branch materially worsens. Classify a concrete breach as Blocking. Classify a supported but uncertain concern as Question. Each Question must become Blocking or the reviewer must withdraw it with a reason.
 
-The learner fixes every Blocking finding. After a fix, rerun the complete automated gate and both reviews from `main` to the new candidate commit. Repeat interactive steps affected by the fix, or the complete checklist if behavior changed.
+The learner fixes every Blocking finding. The agent does not patch the learner's branch. After a fix, rerun the complete automated gate and both reviews from `main` to the new candidate commit. Repeat interactive steps affected by the fix, or the complete checklist if behavior changed.
 
 Approval binds to one commit SHA. Fast-forward `main` to that SHA only when:
 

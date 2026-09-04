@@ -1,6 +1,7 @@
 package core_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/calvertjadon/pongo/internal/core"
@@ -44,27 +45,29 @@ func TestTitleIgnoresInactiveEvents(t *testing.T) {
 	}
 }
 
-func TestReplayProducesIdenticalStateAndEffect(t *testing.T) {
+func TestReplayProducesIdenticalStateAndEffects(t *testing.T) {
 	t.Parallel()
 
 	events := []core.Event{core.EventUnknown, core.EventPrimary, core.EventQuit}
-	firstModel, firstEffect := replay(events)
-	secondModel, secondEffect := replay(events)
+	firstModel, firstEffects := replay(events)
+	secondModel, secondEffects := replay(events)
 
 	if firstModel.Screen() != secondModel.Screen() {
 		t.Fatalf("replay screen = %v, want %v", secondModel.Screen(), firstModel.Screen())
 	}
-	if firstEffect != secondEffect {
-		t.Fatalf("replay effect = %v, want %v", secondEffect, firstEffect)
+	if !slices.Equal(firstEffects, secondEffects) {
+		t.Fatalf("replay effects = %v, want %v", secondEffects, firstEffects)
 	}
 }
 
-func replay(events []core.Event) (core.Model, core.Effect) {
+func replay(events []core.Event) (core.Model, []core.Effect) {
 	model := core.NewModel()
-	effect := core.EffectNone
+	effects := make([]core.Effect, 0, len(events))
 	for _, event := range events {
+		var effect core.Effect
 		model, effect = core.Update(model, event)
+		effects = append(effects, effect)
 	}
 
-	return model, effect
+	return model, effects
 }

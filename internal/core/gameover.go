@@ -68,7 +68,7 @@ func updateGameOver(model Model, match matchState, over gameOverPhase, event Eve
 		}
 
 		return model, Effect{}
-	case EventAdjust, EventBack, EventQuit, EventPaddleStep, EventElapsed:
+	case EventPauseToggle, EventAdjust, EventBack, EventQuit, EventPaddleStep, EventElapsed:
 		return model, Effect{}
 	}
 

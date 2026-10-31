@@ -50,6 +50,8 @@ const (
 	MatchPhaseCountdown MatchPhase = iota
 	// MatchPhaseRally is a rally in play.
 	MatchPhaseRally
+	// MatchPhasePaused freezes the match behind the pause menu and keeps the suspended phase.
+	MatchPhasePaused
 	// MatchPhaseGameOver is a finished match waiting for the player's choice.
 	MatchPhaseGameOver
 )
@@ -62,20 +64,49 @@ type matchPhase interface {
 	tag() MatchPhase
 }
 
-// serveContinuation says what a countdown starts when it completes.
-type serveContinuation uint8
+// countdownContinuation says what a countdown does when it completes.
+type countdownContinuation uint8
 
 const (
 	// continuationStartServe launches the pending serve.
-	continuationStartServe serveContinuation = iota
+	continuationStartServe countdownContinuation = iota
+	// continuationResumeServe launches the pending serve after a pause interrupted the same countdown.
+	continuationResumeServe
+	// continuationResumeRally continues the frozen rally from its exact position and velocity.
+	continuationResumeRally
 )
+
+// startsServe reports whether completing the countdown launches the pending serve.
+func (continuation countdownContinuation) startsServe() bool {
+	switch continuation {
+	case continuationStartServe, continuationResumeServe:
+		return true
+	case continuationResumeRally:
+		return false
+	}
+
+	return false
+}
+
+// resumed returns the continuation that resumes this countdown after a pause. A serve countdown still starts its
+// serve, and a frozen rally stays frozen.
+func (continuation countdownContinuation) resumed() countdownContinuation {
+	switch continuation {
+	case continuationStartServe, continuationResumeServe:
+		return continuationResumeServe
+	case continuationResumeRally:
+		return continuationResumeRally
+	}
+
+	return continuation
+}
 
 // countdownPhase waits a fixed number of steps before starting the serve or continuing a frozen rally. It owns the
 // correlation token of its timing sequence.
 type countdownPhase struct {
 	remaining    Steps
 	token        TimerToken
-	continuation serveContinuation
+	continuation countdownContinuation
 }
 
 // rallyPhase is a rally in play. It owns the correlation token of its timing sequence.
@@ -130,6 +161,7 @@ type ball struct {
 // matchState is one match in progress. It owns the settings it locked and everything it accumulates.
 type matchState struct {
 	settings Settings
+	origin   chain
 	score    score
 	paddles  paddles
 	ball     ball
@@ -146,32 +178,44 @@ func startMatch(model Model) (Model, Effect) {
 	return beginMatch(model, model.draft)
 }
 
-// beginMatch initializes match data with the given locked settings, serves the chain's opening directions, and enters
-// the opening countdown.
+// beginMatch starts a match at the chain's current opening directions with the given locked settings. Starting and
+// rematching share it; both build on openedMatch so the initial data has one definition.
 func beginMatch(model Model, settings Settings) (Model, Effect) {
 	token := model.issueToken()
-	serve := Serve{Horizontal: model.chain.opening, Vertical: model.chain.vertical}
-	model.state = matchState{
+	model.state = openedMatch(settings, model.chain, token)
+
+	return model, scheduleTimer(token, TimerDelay)
+}
+
+// openedMatch returns a match at its original start conditions: centered paddles, the resting ball, no score or
+// feedback, the chain's opening serve, and the opening countdown under token. Starting and restarting share it so the
+// reset rules live in one place; later reset paths extend this function.
+func openedMatch(settings Settings, origin chain, token TimerToken) matchState {
+	return matchState{
 		settings: settings,
+		origin:   origin,
 		paddles:  paddles{left: paddleStartTop, right: paddleStartTop},
 		ball:     resetBall(),
-		serve:    serve,
+		serve:    Serve{Horizontal: origin.opening, Vertical: origin.vertical},
 		phase: countdownPhase{
 			remaining:    CountdownSteps,
 			token:        token,
 			continuation: continuationStartServe,
 		},
 	}
-
-	return model, scheduleTimer(token, TimerDelay)
 }
 
 func updateMatch(model Model, match matchState, event Event) (Model, Effect) {
+	if phase, paused := match.phase.(pausedPhase); paused {
+		return updatePause(model, match, phase, event)
+	}
 	if over, finished := match.phase.(gameOverPhase); finished {
 		return updateGameOver(model, match, over, event)
 	}
 
 	switch event := event.(type) {
+	case EventPauseToggle:
+		return togglePause(model, match)
 	case EventPaddleStep:
 		match.paddles = moved(match.paddles, match.settings.Mode, event)
 		model.state = match
@@ -193,7 +237,7 @@ func advanceMatch(model Model, match matchState, elapsed EventElapsed) (Model, E
 		match, effect = advanceCountdown(&model, match, phase, elapsed)
 	case rallyPhase:
 		match, effect = advanceRally(&model, match, phase, elapsed)
-	case gameOverPhase:
+	case pausedPhase, gameOverPhase:
 		return model, Effect{}
 	}
 	model.state = match
@@ -219,7 +263,9 @@ func advanceCountdown(
 	if steps >= countdown.remaining {
 		token := model.issueToken()
 		match.elapsed = 0
-		match.ball = servedBall(match.serve)
+		if countdown.continuation.startsServe() {
+			match.ball = servedBall(match.serve)
+		}
 		match.feedback = FeedbackNone
 		match.phase = rallyPhase{token: token}
 

@@ -27,66 +27,95 @@ func TestWinningPointEndsTheMatchAtTheLockedWinningScore(t *testing.T) {
 		{
 			name:   "left player wins a short match",
 			winner: core.SideLeft,
-			draft:  core.Settings{Mode: core.ModeLocalTwoPlayer, WinningScore: core.WinningScore5, Difficulty: core.DifficultyNormal},
-			wantl:  5,
+			draft: core.Settings{
+				Mode:         core.ModeLocalTwoPlayer,
+				WinningScore: core.WinningScore5,
+				Difficulty:   core.DifficultyNormal,
+			},
+			wantl: 5,
 		},
 		{
 			name:   "right player wins a short match",
 			winner: core.SideRight,
-			draft:  core.Settings{Mode: core.ModeLocalTwoPlayer, WinningScore: core.WinningScore5, Difficulty: core.DifficultyNormal},
-			wantr:  5,
+			draft: core.Settings{
+				Mode:         core.ModeLocalTwoPlayer,
+				WinningScore: core.WinningScore5,
+				Difficulty:   core.DifficultyNormal,
+			},
+			wantr: 5,
 		},
 		{
 			name:   "left player wins a standard match",
 			winner: core.SideLeft,
-			draft:  core.Settings{Mode: core.ModeLocalTwoPlayer, WinningScore: core.WinningScore7, Difficulty: core.DifficultyNormal},
-			wantl:  7,
+			draft: core.Settings{
+				Mode:         core.ModeLocalTwoPlayer,
+				WinningScore: core.WinningScore7,
+				Difficulty:   core.DifficultyNormal,
+			},
+			wantl: 7,
 		},
 		{
 			name:   "right player wins a standard match",
 			winner: core.SideRight,
-			draft:  core.Settings{Mode: core.ModeLocalTwoPlayer, WinningScore: core.WinningScore7, Difficulty: core.DifficultyNormal},
-			wantr:  7,
+			draft: core.Settings{
+				Mode:         core.ModeLocalTwoPlayer,
+				WinningScore: core.WinningScore7,
+				Difficulty:   core.DifficultyNormal,
+			},
+			wantr: 7,
 		},
 		{
 			name:   "left player wins a long match",
 			winner: core.SideLeft,
-			draft:  core.Settings{Mode: core.ModeLocalTwoPlayer, WinningScore: core.WinningScore11, Difficulty: core.DifficultyNormal},
-			wantl:  11,
+			draft: core.Settings{
+				Mode:         core.ModeLocalTwoPlayer,
+				WinningScore: core.WinningScore11,
+				Difficulty:   core.DifficultyNormal,
+			},
+			wantl: 11,
 		},
 		{
 			name:   "right player wins a long match",
 			winner: core.SideRight,
-			draft:  core.Settings{Mode: core.ModeLocalTwoPlayer, WinningScore: core.WinningScore11, Difficulty: core.DifficultyNormal},
-			wantr:  11,
+			draft: core.Settings{
+				Mode:         core.ModeLocalTwoPlayer,
+				WinningScore: core.WinningScore11,
+				Difficulty:   core.DifficultyNormal,
+			},
+			wantr: 11,
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			finished := playedMatch(t, test.draft, test.winner)
-
-			if got := finished.MatchPhase(); got != core.MatchPhaseGameOver {
-				t.Fatalf("phase after the winning point = %v, want Game over", got)
-			}
-			if got := finished.Winner(); got != test.winner {
-				t.Errorf("winner = %v, want %v", got, test.winner)
-			}
-			left, right := finished.Score()
-			if left != test.wantl || right != test.wantr {
-				t.Errorf("final score = %d:%d, want %d:%d", left, right, test.wantl, test.wantr)
-			}
-			if remaining := finished.CountdownRemaining(); remaining != 0 {
-				t.Errorf("countdown after the winning point = %d steps, want none", remaining)
-			}
-			if x, y := finished.BallPosition(); x != 34.5 || y != 9.5 {
-				t.Errorf("ball after the winning point = (%v, %v), want the resting court center", x, y)
-			}
-			if vx, vy := finished.BallVelocity(); vx != 0 || vy != 0 {
-				t.Errorf("ball velocity after the winning point = (%v, %v), want it resting", vx, vy)
-			}
+			assertFinishedMatch(t, playedMatch(t, test.draft, test.winner), test.winner, test.wantl, test.wantr)
 		})
+	}
+}
+
+// assertFinishedMatch checks everything the winning point leaves behind.
+func assertFinishedMatch(t *testing.T, finished core.Model, winner core.Side, wantLeft, wantRight uint8) {
+	t.Helper()
+
+	if got := finished.MatchPhase(); got != core.MatchPhaseGameOver {
+		t.Fatalf("phase after the winning point = %v, want Game over", got)
+	}
+	if got := finished.Winner(); got != winner {
+		t.Errorf("winner = %v, want %v", got, winner)
+	}
+	left, right := finished.Score()
+	if left != wantLeft || right != wantRight {
+		t.Errorf("final score = %d:%d, want %d:%d", left, right, wantLeft, wantRight)
+	}
+	if remaining := finished.CountdownRemaining(); remaining != 0 {
+		t.Errorf("countdown after the winning point = %d steps, want none", remaining)
+	}
+	if x, y := finished.BallPosition(); x != 34.5 || y != 9.5 {
+		t.Errorf("ball after the winning point = (%v, %v), want the resting court center", x, y)
+	}
+	if vx, vy := finished.BallVelocity(); vx != 0 || vy != 0 {
+		t.Errorf("ball velocity after the winning point = (%v, %v), want it resting", vx, vy)
 	}
 }
 
@@ -107,7 +136,11 @@ func TestGameOverIgnoresEveryStaleTimingSequence(t *testing.T) {
 func TestWinningPointWinsWithoutATwoPointMargin(t *testing.T) {
 	t.Parallel()
 
-	draft := core.Settings{Mode: core.ModeLocalTwoPlayer, WinningScore: core.WinningScore5, Difficulty: core.DifficultyNormal}
+	draft := core.Settings{
+		Mode:         core.ModeLocalTwoPlayer,
+		WinningScore: core.WinningScore5,
+		Difficulty:   core.DifficultyNormal,
+	}
 	model, schedule := startMatchWith(t, draft)
 	token := schedule.Timer().Token
 
@@ -182,6 +215,7 @@ func TestGameOverMenuWrapsAndEveryOtherEventIsANoOp(t *testing.T) {
 	}
 
 	assertNoOps(t, finished, []core.Event{
+		core.EventPauseToggle{},
 		wsStep(core.DirectionUp),
 		wsStep(core.DirectionDown),
 		arrowStep(core.DirectionUp),
@@ -196,7 +230,11 @@ func TestGameOverMenuWrapsAndEveryOtherEventIsANoOp(t *testing.T) {
 func TestRematchKeepsSettingsAndContinuesTheChain(t *testing.T) {
 	t.Parallel()
 
-	draft := core.Settings{Mode: core.ModeLocalTwoPlayer, WinningScore: core.WinningScore5, Difficulty: core.DifficultyNormal}
+	draft := core.Settings{
+		Mode:         core.ModeLocalTwoPlayer,
+		WinningScore: core.WinningScore5,
+		Difficulty:   core.DifficultyNormal,
+	}
 	finished := playedMatch(t, draft, core.SideLeft)
 
 	rematch, effect := core.Update(finished, core.EventPrimary{})
@@ -239,6 +277,9 @@ func TestRematchKeepsSettingsAndContinuesTheChain(t *testing.T) {
 	}
 
 	second := playedMatchFrom(t, rematch, effect.Timer().Token, core.SideLeft)
+	if focus := second.GameOverFocus(); focus != core.GameOverRowRematch {
+		t.Errorf("focus after the second match = %v, want Rematch selected again", focus)
+	}
 	again, effect := core.Update(second, core.EventPrimary{})
 	if again.ChainPosition() != 2 {
 		t.Errorf("chain position after the second rematch = %d, want 2", again.ChainPosition())
@@ -254,7 +295,11 @@ func TestRematchKeepsSettingsAndContinuesTheChain(t *testing.T) {
 func TestChangeSetupSeedsTheDraftAndEndsTheChain(t *testing.T) {
 	t.Parallel()
 
-	draft := core.Settings{Mode: core.ModeSinglePlayer, WinningScore: core.WinningScore11, Difficulty: core.DifficultyHard}
+	draft := core.Settings{
+		Mode:         core.ModeSinglePlayer,
+		WinningScore: core.WinningScore11,
+		Difficulty:   core.DifficultyHard,
+	}
 	finished := playedMatch(t, draft, core.SideLeft)
 
 	chosen := finished
@@ -290,7 +335,11 @@ func TestChangeSetupSeedsTheDraftAndEndsTheChain(t *testing.T) {
 func TestReturnToTitleKeepsTheDraftAndANewMatchStartsAFreshChain(t *testing.T) {
 	t.Parallel()
 
-	draft := core.Settings{Mode: core.ModeLocalTwoPlayer, WinningScore: core.WinningScore5, Difficulty: core.DifficultyNormal}
+	draft := core.Settings{
+		Mode:         core.ModeLocalTwoPlayer,
+		WinningScore: core.WinningScore5,
+		Difficulty:   core.DifficultyNormal,
+	}
 	model, schedule := startMatchWith(t, draft)
 	model = playedMatchFrom(t, model, schedule.Timer().Token, core.SideLeft)
 

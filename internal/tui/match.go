@@ -33,6 +33,12 @@ func renderMatch(application core.Model) string {
 	drawCourt(rows)
 	drawPaddles(rows, application)
 	drawPlay(rows, application)
+	if application.MatchPhase() == core.MatchPhasePaused {
+		drawPauseOverlay(rows, application)
+	}
+	if application.MatchPhase() == core.MatchPhaseGameOver {
+		drawGameOverOverlay(rows, application)
+	}
 	writeCentered(rows[feedbackRow], feedbackLine(application))
 	writeCentered(rows[controlsRow], controlsLine(settings.Mode))
 
@@ -71,16 +77,16 @@ func drawPaddles(rows [][]rune, application core.Model) {
 	}
 }
 
-// drawPlay draws the countdown digit or the ball over the court. A countdown hides the ball; a rally shows it.
+// drawPlay draws the countdown digit and the ball over the court. The digit shows while a countdown runs, and the ball
+// shows whenever it is visible, so a frozen rally stays on the court through a pause and its resume.
 func drawPlay(rows [][]rune, application core.Model) {
-	switch application.MatchPhase() {
-	case core.MatchPhaseCountdown:
+	if application.MatchPhase() == core.MatchPhaseCountdown {
 		rows[interiorRow(core.CourtHeight/2)][interiorColumn(core.CourtWidth/2)] =
 			countdownDigit(application.CountdownRemaining())
-	case core.MatchPhaseRally:
+	}
+	if application.BallVisible() {
 		x, y := application.BallPosition()
 		rows[interiorRow(ballCell(y, core.CourtHeight))][interiorColumn(ballCell(x, core.CourtWidth))] = 'o'
-	default:
 	}
 }
 
@@ -129,15 +135,15 @@ func playerName(settings core.Settings, left bool) string {
 	return "CPU"
 }
 
-// controlsLine lists the movement keys that apply in the current mode.
+// controlsLine lists the movement keys that apply in the current mode, plus the pause key.
 func controlsLine(mode core.Mode) string {
 	switch mode {
 	case core.ModeLocalTwoPlayer:
-		return "W/S Player 1  |  Up/Down Player 2"
+		return "W/S Player 1  |  Up/Down Player 2  |  P pause"
 	case core.ModeSinglePlayer:
-		return "W/S or Up/Down move"
+		return "W/S or Up/Down move  |  P pause"
 	default:
-		return "W/S or Up/Down move"
+		return "W/S or Up/Down move  |  P pause"
 	}
 }
 

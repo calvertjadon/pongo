@@ -64,7 +64,7 @@ func updateGameOver(model Model, match matchState, over gameOverPhase, event Eve
 		case GameOverRowChangeSetup:
 			return gameOverChangeSetup(model, match)
 		case GameOverRowReturnToTitle:
-			return gameOverReturnToTitle(model)
+			return returnToTitle(model)
 		}
 
 		return model, Effect{}
@@ -77,15 +77,7 @@ func updateGameOver(model Model, match matchState, over gameOverPhase, event Eve
 
 // stepped moves one menu row in direction, wrapping between the first and last rows.
 func (row GameOverRow) stepped(direction VerticalDirection) GameOverRow {
-	const rows = GameOverRowReturnToTitle + 1
-	switch direction {
-	case DirectionUp:
-		return (row + rows - 1) % rows
-	case DirectionDown:
-		return (row + 1) % rows
-	}
-
-	return row
+	return wrapped(row, GameOverRowReturnToTitle+1, direction)
 }
 
 // gameOverRematch continues the chain and starts another match with the settings the finished one locked: the chain
@@ -103,14 +95,6 @@ func gameOverChangeSetup(model Model, finished matchState) (Model, Effect) {
 	model.draft = finished.settings
 	model.chain = chain{}
 	model.state = setupState{focus: SetupRowMode}
-
-	return model, Effect{}
-}
-
-// gameOverReturnToTitle ends the chain and returns to the title, keeping the session draft.
-func gameOverReturnToTitle(model Model) (Model, Effect) {
-	model.chain = chain{}
-	model.state = titleState{}
 
 	return model, Effect{}
 }
@@ -135,10 +119,4 @@ func (model Model) Winner() Side {
 	}
 
 	return SideLeft
-}
-
-// ChainPosition returns the zero-based position of the session's rematch chain. A new chain starts at zero and every
-// rematch advances it by one; the computer player's seed derives from it.
-func (model Model) ChainPosition() uint8 {
-	return model.chain.position
 }

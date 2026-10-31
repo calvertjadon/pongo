@@ -37,7 +37,7 @@ type Serve struct {
 // chain is the rematch chain one match belongs to. It owns the opening directions the next match serves with and the
 // zero-based chain position, which seeds the computer player.
 type chain struct {
-	position uint8
+	position uint32
 	opening  HorizontalDirection
 	vertical VerticalDirection
 }
@@ -107,6 +107,11 @@ type countdownPhase struct {
 	remaining    Steps
 	token        TimerToken
 	continuation countdownContinuation
+}
+
+// newCountdown returns a full countdown that does continuation when it completes.
+func newCountdown(token TimerToken, continuation countdownContinuation) countdownPhase {
+	return countdownPhase{remaining: CountdownSteps, token: token, continuation: continuation}
 }
 
 // rallyPhase is a rally in play. It owns the correlation token of its timing sequence.
@@ -200,11 +205,7 @@ func openedMatch(settings Settings, origin chain, token TimerToken) matchState {
 		ball:     resetBall(),
 		serve:    Serve{Horizontal: origin.opening, Vertical: origin.vertical},
 		computer: openedComputer(settings, origin),
-		phase: countdownPhase{
-			remaining:    CountdownSteps,
-			token:        token,
-			continuation: continuationStartServe,
-		},
+		phase:    newCountdown(token, continuationStartServe),
 	}
 }
 
@@ -267,6 +268,7 @@ func advanceCountdown(
 		if countdown.remaining == 0 {
 			break
 		}
+		match.stepCount++
 		match.moveComputer(computerCenterRow)
 		countdown.remaining--
 	}
@@ -302,6 +304,7 @@ func advanceRally(model *Model, match matchState, rally rallyPhase, elapsed Even
 	var steps Steps
 	match, steps = match.acceptedTime(elapsed.Elapsed)
 	for range steps {
+		match.stepCount++
 		match.moveComputer(match.computer.target())
 		match.ball = steppedBall(match.ball, match.paddles)
 		if scorer, scored := match.ball.scorer(); scored {
@@ -354,11 +357,7 @@ func scoredPoint(model *Model, match matchState, scorer Feedback) (matchState, E
 
 	token := model.issueToken()
 	match.feedback = scorer
-	match.phase = countdownPhase{
-		remaining:    CountdownSteps,
-		token:        token,
-		continuation: continuationStartServe,
-	}
+	match.phase = newCountdown(token, continuationStartServe)
 
 	return match, scheduleTimer(token, TimerDelay)
 }
@@ -433,16 +432,6 @@ func (model Model) PaddleTops() (left, right uint8) {
 func (model Model) BallPosition() (x, y float64) {
 	if match, ok := model.state.(matchState); ok {
 		return match.ball.x, match.ball.y
-	}
-
-	return 0, 0
-}
-
-// BallVelocity returns the ball's court velocity in cells per second. The pair carries the cell aspect correction, so
-// the visual speed is the length of (vx, 2*vy). It is meaningful only while Screen is ScreenMatch.
-func (model Model) BallVelocity() (vx, vy float64) {
-	if match, ok := model.state.(matchState); ok {
-		return match.ball.vx, match.ball.vy
 	}
 
 	return 0, 0

@@ -15,19 +15,21 @@ const (
 	serveVY = 4.788282006559362
 )
 
-// rallyTops is a reachable paddle sequence: the right paddle takes the serve near its center, the left returns it, and
-// the right then takes it on the paddle's top row with a steep angle that sends the ball off the top and bottom walls
-// before the rally reaches the speed cap.
-var rallyTops = []uint8{2, 4, 10, 10, 16, 14, 2}
+// rallyTops returns a reachable paddle sequence: the right paddle takes the serve near its center, the left returns
+// it, and the right then takes it on the paddle's top row with a steep angle that sends the ball off the top and
+// bottom walls before the rally reaches the speed cap.
+func rallyTops() []uint8 {
+	return []uint8{2, 4, 10, 10, 16, 14, 2}
+}
 
 func TestRallyServesAtTheOpeningSpeedAndAngle(t *testing.T) {
 	t.Parallel()
 
-	model, _ := beginRally(t, core.ModeLocalTwoPlayer)
+	model, token := beginRally(t, core.ModeLocalTwoPlayer)
 	if x, y := model.BallPosition(); x != 34.5 || y != 9.5 {
 		t.Errorf("served ball = (%v, %v), want the court center (34.5, 9.5)", x, y)
 	}
-	vx, vy := model.BallVelocity()
+	vx, vy := stepVelocity(t, model, token)
 	assertClose(t, "serve vx", vx, serveVX)
 	assertClose(t, "serve vy", vy, -serveVY)
 	assertClose(t, "serve speed", math.Hypot(vx, 2*vy), 28)
@@ -42,9 +44,15 @@ func TestBallMovesOneFixedStepOfItsVelocity(t *testing.T) {
 	model, token := beginRally(t, core.ModeLocalTwoPlayer)
 	afterOne := advanceRally(t, model, token, 1)
 	assertBallStep(t, afterOne, 1)
-	afterTen := advanceRally(t, afterOne, token, 9)
+	afterNine := advanceRally(t, afterOne, token, 8)
+	afterTen := advanceRally(t, afterNine, token, 1)
 	assertBallStep(t, afterTen, 10)
-	if vx, vy := afterTen.BallVelocity(); math.Abs(math.Hypot(vx, 2*vy)-28) > 1e-9 {
+	x9, y9 := afterNine.BallPosition()
+	x10, y10 := afterTen.BallPosition()
+	vx, vy := (x10-x9)*stepsPerSecond, (y10-y9)*stepsPerSecond
+	assertClose(t, "free-flight vx", vx, serveVX)
+	assertClose(t, "free-flight vy", vy, -serveVY)
+	if math.Abs(math.Hypot(vx, 2*vy)-28) > 1e-9 {
 		t.Errorf("free flight changed the speed to %v, want 28", math.Hypot(vx, 2*vy))
 	}
 }
@@ -65,13 +73,13 @@ func TestPaddleReboundsMapTheImpactRowToTheAngle(t *testing.T) {
 	t.Parallel()
 
 	model, token := beginRally(t, core.ModeLocalTwoPlayer)
-	afterHits, speeds := driveHits(t, model, token, rallyTops[:3])
+	_, speeds, velocities := driveHits(t, model, token, rallyTops()[:3])
 	if want := []float64{31, 34, 37}; !almostEqualSlice(speeds, want) {
 		t.Errorf("speeds after the first three hits = %v, want %v", speeds, want)
 	}
 
 	// A center hit returns the ball almost flat and away from the paddle.
-	vx, vy := afterHits.BallVelocity()
+	vx, vy := velocities[2][0], velocities[2][1]
 	assertClose(t, "end-row vx", vx, -24.552058173591295)
 	assertClose(t, "end-row vy", vy, -13.840126800725027)
 	angle := math.Atan2(2*vy, -vx) * 180 / math.Pi
@@ -85,7 +93,7 @@ func TestPaddleHitsAccelerateAndCapAtFortyFour(t *testing.T) {
 	t.Parallel()
 
 	model, token := beginRally(t, core.ModeLocalTwoPlayer)
-	_, speeds := driveHits(t, model, token, rallyTops)
+	_, speeds, _ := driveHits(t, model, token, rallyTops())
 	want := []float64{31, 34, 37, 40, 43, 44, 44}
 	if !almostEqualSlice(speeds, want) {
 		t.Errorf("hit speeds = %v, want %v", speeds, want)
@@ -96,25 +104,17 @@ func TestBallReboundsOffWallsWithoutChangingSpeed(t *testing.T) {
 	t.Parallel()
 
 	model, token := beginRally(t, core.ModeLocalTwoPlayer)
-	afterHits, _ := driveHits(t, model, token, rallyTops[:3])
-	vx, vy := afterHits.BallVelocity()
+	afterHits, _, velocities := driveHits(t, model, token, rallyTops()[:3])
+	vx, vy := velocities[2][0], velocities[2][1]
 	speed := math.Hypot(vx, 2*vy)
 	if vy >= 0 {
 		t.Fatalf("ball after the steep hit moves down, want toward the top wall")
 	}
 
-	bounced := advanceUntil(t, afterHits, token, func(current core.Model) bool {
-		_, currentVY := current.BallVelocity()
-
-		return currentVY > 0
-	})
-	bouncedVX, bouncedVY := bounced.BallVelocity()
-	if bouncedVX != vx {
-		t.Errorf("wall rebound changed vx from %v to %v", vx, bouncedVX)
-	}
-	if bouncedVY != -vy {
-		t.Errorf("wall rebound gave vy %v, want the reflection %v", bouncedVY, -vy)
-	}
+	// The vertical step reverses at the top wall; two equal steps after that give the reflected velocity.
+	bounced, bouncedVX, bouncedVY := wallBounce(t, afterHits, token)
+	assertClose(t, "reflected vx", bouncedVX, vx)
+	assertClose(t, "reflected vy", bouncedVY, -vy)
 	if x, y := bounced.BallPosition(); x < 0 || x > core.CourtWidth-1 || y < 0 || y > core.CourtHeight-1 {
 		t.Errorf("ball after the wall rebound is at (%v, %v), outside the court", x, y)
 	}
@@ -196,9 +196,6 @@ func assertScoredPoint(
 	if x, y := scored.BallPosition(); x != 34.5 || y != 9.5 {
 		t.Errorf("ball after the point = (%v, %v), want the court center", x, y)
 	}
-	if vx, vy := scored.BallVelocity(); vx != 0 || vy != 0 {
-		t.Errorf("ball velocity after the point = (%v, %v), want it resting", vx, vy)
-	}
 	if leftTop, gotRight := scored.PaddleTops(); leftTop != 8 || gotRight != rightTop {
 		t.Errorf("paddle tops after the point = %d, %d; want them kept", leftTop, gotRight)
 	}
@@ -210,6 +207,15 @@ func assertScoredPoint(
 	}
 	if effect.Kind() != core.EffectScheduleTimer || effect.Timer().Token == rallyToken {
 		t.Errorf("point effect = %+v, want a timer for a new timing sequence", effect)
+	}
+
+	// The ball stays resting at the center through the new countdown's steps.
+	resting, _ := core.Update(
+		scored,
+		core.EventElapsed{Elapsed: core.StepDuration, Token: effect.Timer().Token},
+	)
+	if x, y := resting.BallPosition(); x != 34.5 || y != 9.5 {
+		t.Errorf("ball one countdown step after the point = (%v, %v), want it resting", x, y)
 	}
 }
 
@@ -242,8 +248,8 @@ func TestLaterServesLaunchTowardTheConceder(t *testing.T) {
 	model = setPaddleTop(t, model, true, 2)
 	scored, pointEffect := runUntilPoint(t, model, token, [2]uint8{0, 1})
 
-	served, _ := beginServingRally(t, scored, pointEffect.Timer().Token)
-	vx, vy := served.BallVelocity()
+	served, servedToken := beginServingRally(t, scored, pointEffect.Timer().Token)
+	vx, vy := stepVelocity(t, served, servedToken)
 	if vx >= 0 {
 		t.Errorf("serve vx after the right player scored = %v, want toward the left player", vx)
 	}
@@ -364,25 +370,6 @@ func advanceRally(t *testing.T, model core.Model, token core.TimerToken, steps i
 	return model
 }
 
-// advanceUntil spends one-step elapsed events until done holds.
-func advanceUntil(t *testing.T, model core.Model, token core.TimerToken, done func(core.Model) bool) core.Model {
-	t.Helper()
-
-	for range 4000 {
-		if done(model) {
-			return model
-		}
-		var effect core.Effect
-		model, effect = core.Update(model, core.EventElapsed{Elapsed: core.StepDuration, Token: token})
-		if model.MatchPhase() != core.MatchPhaseRally || effect.Kind() != core.EffectScheduleTimer {
-			t.Fatalf("rally ended before the expected step")
-		}
-	}
-	t.Fatal("condition did not hold within 4000 steps")
-
-	return model
-}
-
 // runUntilPoint spends one-step elapsed events until the score reaches want and returns the new countdown.
 func runUntilPoint(t *testing.T, model core.Model, token core.TimerToken, want [2]uint8) (core.Model, core.Effect) {
 	t.Helper()
@@ -403,33 +390,111 @@ func runUntilPoint(t *testing.T, model core.Model, token core.TimerToken, want [
 	return model, core.Effect{}
 }
 
-// driveHits spends steps until the paddle sequences tops have each taken a hit, and returns the model after the last
-// hit with the speed after each hit. The approached paddle is moved into place after each hit.
-func driveHits(t *testing.T, model core.Model, token core.TimerToken, tops []uint8) (core.Model, []float64) {
+// stepsPerSecond is the rate of fixed simulation steps: one step is 1/120 second.
+const stepsPerSecond = 120
+
+// stepBall spends one fixed rally step and returns the model with the ball's position change.
+func stepBall(t *testing.T, model core.Model, token core.TimerToken) (core.Model, float64, float64) {
+	t.Helper()
+
+	beforeX, beforeY := model.BallPosition()
+	var effect core.Effect
+	model, effect = core.Update(model, core.EventElapsed{Elapsed: core.StepDuration, Token: token})
+	if model.MatchPhase() != core.MatchPhaseRally || effect.Kind() != core.EffectScheduleTimer {
+		t.Fatalf("the rally ended after phase %v with effect %v", model.MatchPhase(), effect.Kind())
+	}
+	afterX, afterY := model.BallPosition()
+
+	return model, afterX - beforeX, afterY - beforeY
+}
+
+// stepVelocity spends one fixed step and returns the velocity the ball's position change shows, in cells per second.
+func stepVelocity(t *testing.T, model core.Model, token core.TimerToken) (float64, float64) {
+	t.Helper()
+
+	_, dx, dy := stepBall(t, model, token)
+
+	return dx * stepsPerSecond, dy * stepsPerSecond
+}
+
+// freeVelocity spends steps until two consecutive steps move the ball equally, which means both were free flight, and
+// returns the model after the second of them with the velocity those steps carried.
+func freeVelocity(t *testing.T, model core.Model, token core.TimerToken) (core.Model, float64, float64) {
+	t.Helper()
+
+	var previousDX, previousDY float64
+	primed := false
+	for range 60 {
+		var dx, dy float64
+		model, dx, dy = stepBall(t, model, token)
+		if primed && math.Abs(dx-previousDX) < 1e-9 && math.Abs(dy-previousDY) < 1e-9 {
+			return model, dx * stepsPerSecond, dy * stepsPerSecond
+		}
+		previousDX, previousDY, primed = dx, dy, true
+	}
+	t.Fatal("the ball never flew two consecutive equal steps")
+
+	return model, 0, 0
+}
+
+// wallBounce spends steps until the ball's vertical travel reverses at a wall, then returns the model with the
+// reflected velocity from the free flight that follows.
+func wallBounce(t *testing.T, model core.Model, token core.TimerToken) (core.Model, float64, float64) {
+	t.Helper()
+
+	for range 400 {
+		var dy float64
+		model, _, dy = stepBall(t, model, token)
+		if dy <= 0 {
+			continue
+		}
+
+		return freeVelocity(t, model, token)
+	}
+	t.Fatal("the ball never bounced off a wall")
+
+	return model, 0, 0
+}
+
+// driveHits spends steps until the paddle sequence tops have each taken a hit, and returns the model after the last
+// hit with the speed and velocity that followed each hit. The approached paddle is moved into place after each hit.
+func driveHits(
+	t *testing.T,
+	model core.Model,
+	token core.TimerToken,
+	tops []uint8,
+) (core.Model, []float64, [][2]float64) {
 	t.Helper()
 
 	model = setPaddleTop(t, model, true, tops[0])
 	speeds := make([]float64, 0, len(tops))
-	lastVX, _ := model.BallVelocity()
-	for hit := 0; hit < len(tops); {
-		var effect core.Effect
-		model, effect = core.Update(model, core.EventElapsed{Elapsed: core.StepDuration, Token: token})
-		if model.MatchPhase() != core.MatchPhaseRally || effect.Kind() != core.EffectScheduleTimer {
-			t.Fatalf("rally ended after %d of %d hits", hit, len(tops))
+	velocities := make([][2]float64, 0, len(tops))
+	var lastDirection float64
+	hit := 0
+	for hit < len(tops) {
+		var dx float64
+		model, dx, _ = stepBall(t, model, token)
+		direction := math.Copysign(1, dx)
+		if lastDirection == 0 || direction == lastDirection {
+			lastDirection = direction
+
+			continue
 		}
 
-		vx, vy := model.BallVelocity()
-		if (vx > 0) != (lastVX > 0) {
-			speeds = append(speeds, math.Hypot(vx, 2*vy))
-			hit++
-			if hit < len(tops) {
-				model = setPaddleTop(t, model, vx > 0, tops[hit])
-			}
+		// The horizontal travel reversed, so the previous step sent the ball off a paddle. The free flight that
+		// follows shows the new velocity.
+		var vx, vy float64
+		model, vx, vy = freeVelocity(t, model, token)
+		speeds = append(speeds, math.Hypot(vx, 2*vy))
+		velocities = append(velocities, [2]float64{vx, vy})
+		hit++
+		if hit < len(tops) {
+			model = setPaddleTop(t, model, vx > 0, tops[hit])
 		}
-		lastVX = vx
+		lastDirection = 0
 	}
 
-	return model, speeds
+	return model, speeds, velocities
 }
 
 // setPaddleTop moves one paddle with its binding group until it reaches top.

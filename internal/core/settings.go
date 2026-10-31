@@ -85,6 +85,11 @@ func defaultSettings() Settings {
 	return Settings{Mode: ModeSinglePlayer, WinningScore: WinningScore7, Difficulty: DifficultyNormal}
 }
 
+// singlePlayer reports whether a match at these settings is played against the computer.
+func (settings Settings) singlePlayer() bool {
+	return settings.Mode == ModeSinglePlayer
+}
+
 // choose returns leftward for DirectionLeft and rightward for DirectionRight.
 func choose[T any](direction HorizontalDirection, leftward, rightward T) T {
 	switch direction {

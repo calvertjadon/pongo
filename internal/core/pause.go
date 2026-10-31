@@ -25,15 +25,7 @@ func (pausedPhase) tag() MatchPhase { return MatchPhasePaused }
 
 // stepped returns the pause menu row one navigation step away, wrapping between the first and last rows.
 func (row PauseRow) stepped(direction VerticalDirection) PauseRow {
-	const rows = PauseRowReturnToTitle + 1
-	switch direction {
-	case DirectionUp:
-		return (row + rows - 1) % rows
-	case DirectionDown:
-		return (row + 1) % rows
-	}
-
-	return row
+	return wrapped(row, PauseRowReturnToTitle+1, direction)
 }
 
 // togglePause freezes a match in play behind the pause menu, or resumes a paused one. Freezing requests no timer: the
@@ -87,11 +79,9 @@ func runPauseRow(model Model, match matchState, paused pausedPhase) (Model, Effe
 // paddles, ball, rally data, feedback, and timing. Locked settings survive, and the match enters its opening countdown
 // under a new timing generation.
 func restartMatch(model Model, match matchState) (Model, Effect) {
-	token := model.issueToken()
 	model.chain = match.origin
-	model.state = openedMatch(match.settings, match.origin, token)
 
-	return model, scheduleTimer(token, TimerDelay)
+	return beginMatch(model, match.settings)
 }
 
 // returnToTitle discards the match and its rematch chain while keeping the session's setup draft.
@@ -108,11 +98,7 @@ func resumeMatch(model Model, match matchState, paused pausedPhase) (Model, Effe
 	token := model.issueToken()
 	match.elapsed = 0
 	match.suspendComputer()
-	match.phase = countdownPhase{
-		remaining:    CountdownSteps,
-		token:        token,
-		continuation: resumedContinuation(paused.suspended),
-	}
+	match.phase = newCountdown(token, resumedContinuation(paused.suspended))
 	model.state = match
 
 	return model, scheduleTimer(token, TimerDelay)
@@ -121,11 +107,10 @@ func resumeMatch(model Model, match matchState, paused pausedPhase) (Model, Effe
 // suspendComputer discards the computer's target for a resume countdown while keeping the error drawn for the inbound
 // approach. The full reaction delay restarts when rally play resumes.
 func (match *matchState) suspendComputer() {
-	if match.settings.Mode != ModeSinglePlayer {
+	if !match.settings.singlePlayer() {
 		return
 	}
-	match.computer.aimed = false
-	match.computer.approachSteps = 0
+	match.computer.suspend()
 }
 
 // resumedContinuation returns what the countdown after a pause must do when it completes.

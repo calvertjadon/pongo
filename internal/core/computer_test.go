@@ -1,7 +1,7 @@
 package core_test
 
 import (
-	"math"
+	"slices"
 	"testing"
 
 	"github.com/calvertjadon/pongo/internal/core"
@@ -15,109 +15,24 @@ type computerCase struct {
 	reaction   int
 	reaim      int
 	moveEvery  int
-	errorRows  float64
 }
 
 // computerCases returns the three profiles at 120 fixed steps per second.
 func computerCases() []computerCase {
 	return []computerCase{
-		{name: "easy", difficulty: core.DifficultyEasy, reaction: 48, reaim: 30, moveEvery: 20, errorRows: 4},
-		{name: "normal", difficulty: core.DifficultyNormal, reaction: 24, reaim: 18, moveEvery: 12, errorRows: 3},
-		{name: "hard", difficulty: core.DifficultyHard, reaction: 12, reaim: 12, moveEvery: 8, errorRows: 2.25},
+		{name: "easy", difficulty: core.DifficultyEasy, reaction: 48, reaim: 30, moveEvery: 20},
+		{name: "normal", difficulty: core.DifficultyNormal, reaction: 24, reaim: 18, moveEvery: 12},
+		{name: "hard", difficulty: core.DifficultyHard, reaction: 12, reaim: 12, moveEvery: 8},
 	}
 }
 
-func TestComputerWaitsForItsFirstReactionBeforeAiming(t *testing.T) {
-	t.Parallel()
-
-	for _, test := range computerCases() {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-
-			model, token := computerRally(t, test.difficulty)
-			drawn := model.ComputerError()
-			if drawn < -test.errorRows || drawn > test.errorRows {
-				t.Errorf("opening approach error = %v, want inside [-%v, %v]",
-					drawn, test.errorRows, test.errorRows)
-			}
-
-			for step := 1; step <= test.reaction; step++ {
-				model = nextComputerStep(t, model, token)
-				_, aimed := model.ComputerTarget()
-				if want := step == test.reaction; aimed != want {
-					t.Fatalf("aimed after %d steps = %v, want %v", step, aimed, want)
-				}
-			}
-		})
-	}
-}
-
-func TestComputerReaimsOnItsProfileCadence(t *testing.T) {
-	t.Parallel()
-
-	for _, test := range computerCases() {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-
-			model, token := computerRally(t, test.difficulty)
-			for range test.reaction {
-				model = nextComputerStep(t, model, token)
-			}
-			target, aimed := model.ComputerTarget()
-			if !aimed {
-				t.Fatalf("no target after the %d step reaction delay", test.reaction)
-			}
-
-			for range test.reaim - 1 {
-				model = nextComputerStep(t, model, token)
-				if got, _ := model.ComputerTarget(); got != target {
-					t.Fatalf("target moved between observations: %v then %v", target, got)
-				}
-			}
-			model = nextComputerStep(t, model, token)
-			if got, _ := model.ComputerTarget(); got == target {
-				t.Errorf("target after the re-aim interval = %v, want a fresh observation", got)
-			}
-		})
-	}
-}
-
-func TestComputerMovesTwoRowsOnlyOnItsSchedule(t *testing.T) {
-	t.Parallel()
-
-	for _, test := range computerCases() {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-
-			const centered = (core.CourtHeight - 1) / 2.0
-
-			model, token := computerRally(t, test.difficulty)
-			lastChange := 0
-			changes := 0
-			for step := 1; step <= 140; step++ {
-				target, aimed := model.ComputerTarget()
-				if !aimed {
-					target = centered
-				}
-				_, before := model.PaddleTops()
-				model = nextComputerStep(t, model, token)
-				_, after := model.PaddleTops()
-				if after == before {
-					continue
-				}
-				assertMovedToward(t, target, before, after)
-				if changes > 0 && step-lastChange < test.moveEvery {
-					t.Fatalf("paddle moved %d steps after its last move, want at least %d",
-						step-lastChange, test.moveEvery)
-				}
-				lastChange = step
-				changes++
-			}
-			if changes == 0 {
-				t.Error("the computer never moved toward its first target")
-			}
-		})
-	}
+// computerTrajectory is one replayed step's player-visible state: the ball's court position, both paddle tops, and the
+// score. Comparing whole trajectories is how these tests observe the computer's hidden aim and error draws.
+type computerTrajectory struct {
+	x, y        float64
+	left, right uint8
+	leftScore   uint8
+	rightScore  uint8
 }
 
 func TestComputerStaysCenteredThroughTheCountdown(t *testing.T) {
@@ -131,157 +46,185 @@ func TestComputerStaysCenteredThroughTheCountdown(t *testing.T) {
 			t.Fatalf("paddle during the countdown = %d, want the centered 8", top)
 		}
 	}
-	if _, aimed := model.ComputerTarget(); aimed {
-		t.Error("the computer aimed during a countdown, want it centered")
-	}
 }
 
-func TestComputerKeepsOneErrorPerApproach(t *testing.T) {
+func TestComputerWaitsForItsReactionDelayBeforeMoving(t *testing.T) {
 	t.Parallel()
 
-	model, token := computerRally(t, core.DifficultyHard)
-	first := model.ComputerError()
-	for step := 1; step <= 40; step++ {
-		model = nextComputerStep(t, model, token)
-		if got := model.ComputerError(); got != first {
-			t.Fatalf("error after %d steps = %v, want the approach's %v", step, got, first)
-		}
-	}
+	for _, test := range computerCases() {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 
-	lastVX, _ := model.BallVelocity()
-	for range 4000 {
-		if lastVX < 0 {
-			model = steerLeftPaddle(t, model)
-		}
-		next, effect := core.Update(model, core.EventElapsed{Elapsed: core.StepDuration, Token: token})
-		if effect.Kind() != core.EffectScheduleTimer {
-			t.Fatalf("the rally ended before the computer's return")
-		}
-		vx, _ := next.BallVelocity()
-		if lastVX < 0 && vx > 0 {
-			if got := next.ComputerError(); got == first {
-				t.Fatalf("new approach error = %v, want a fresh draw", got)
+			model, token := computerRally(t, test.difficulty)
+			for step := 1; step <= test.reaction; step++ {
+				model = nextComputerStep(t, model, token)
+				if _, top := model.PaddleTops(); top != 8 {
+					t.Fatalf("paddle moved to %d within the %d step reaction delay", top, test.reaction)
+				}
 			}
-
-			return
-		}
-		lastVX = vx
-		model = next
+			if test.difficulty == core.DifficultyEasy {
+				// Easy observes the row the ball has reached, which can fall inside its centered span, so this seed's
+				// first approach may need no movement at all.
+				return
+			}
+			for range test.moveEvery {
+				model = nextComputerStep(t, model, token)
+				if _, top := model.PaddleTops(); top != 8 {
+					return
+				}
+			}
+			t.Fatal("the paddle never moved toward the observed approach")
+		})
 	}
-	t.Fatal("the left paddle never returned the computer's shot")
 }
 
-func TestPauseDiscardsTheTargetAndRestartsTheReactionDelay(t *testing.T) {
+func TestComputerMovesTwoRowsOnlyOnItsSchedule(t *testing.T) {
 	t.Parallel()
 
-	model, token := computerRally(t, core.DifficultyHard)
+	// Easy observes a row that can already lie inside its centered span, so its first approach may stay still.
+	for _, test := range computerCases()[1:] {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			model, token := computerRally(t, test.difficulty)
+			_, previous := model.PaddleTops()
+			lastMove := 0
+			changes := 0
+			for step := 1; step <= 140; step++ {
+				model = nextComputerStep(t, model, token)
+				_, top := model.PaddleTops()
+				if top == previous {
+					continue
+				}
+				assertComputerMoved(t, previous, top)
+				if changes > 0 && step-lastMove < test.moveEvery {
+					t.Fatalf("paddle moved %d steps after its last move, want at least %d",
+						step-lastMove, test.moveEvery)
+				}
+				lastMove, previous = step, top
+				changes++
+			}
+			if changes == 0 {
+				t.Error("the computer never moved toward its first targets")
+			}
+		})
+	}
+}
+
+// assertComputerMoved checks one computer movement was exactly two rows inside the court.
+func assertComputerMoved(t *testing.T, before, after uint8) {
+	t.Helper()
+
+	if after%2 != 0 || after > 16 {
+		t.Fatalf("paddle top after a move = %d, want an even row inside the court", after)
+	}
+	if difference := int(after) - int(before); difference != 2 && difference != -2 {
+		t.Fatalf("paddle moved from %d to %d, want exactly two rows", before, after)
+	}
+}
+
+func TestComputerSettlesOnOneRowWithinAnApproach(t *testing.T) {
+	t.Parallel()
+
+	test := computerCases()[2] // Hard, whose first target always lies outside the centered span.
+	model, token := computerRally(t, test.difficulty)
+	lastTop := uint8(8)
+	lastChange := 0
+	for step := 1; step <= 400; step++ {
+		beforeX, _ := model.BallPosition()
+		model = nextComputerStep(t, model, token)
+		afterX, _ := model.BallPosition()
+		_, top := model.PaddleTops()
+		if top != lastTop {
+			lastTop = top
+			lastChange = step
+		}
+
+		// The paddle returns the serve when the ball's horizontal travel reverses.
+		if afterX >= beforeX {
+			continue
+		}
+		if step-lastChange < test.moveEvery {
+			t.Fatalf("paddle last moved %d steps before the return, want it settled at least %d",
+				step-lastChange, test.moveEvery)
+		}
+		if left, right := model.Score(); left != 0 || right != 0 {
+			t.Fatalf("score after the return = %d:%d, want the serve returned", left, right)
+		}
+
+		return
+	}
+	t.Fatal("the ball never returned from the computer's paddle")
+}
+
+func TestPauseAndResumeRestartTheReactionDelay(t *testing.T) {
+	t.Parallel()
+
+	test := computerCases()[2]
+	model, token := computerRally(t, test.difficulty)
 	model = advanceRally(t, model, token, 40)
-	if _, aimed := model.ComputerTarget(); !aimed {
-		t.Fatal("no target before the pause")
-	}
-	drawn := model.ComputerError()
-
 	paused, _ := core.Update(model, core.EventPauseToggle{})
-	if _, top := paused.PaddleTops(); top == 8 {
-		t.Fatal("the paddle was still centered before the pause; the test needs a displaced paddle")
-	}
-	beforeTarget, _ := model.ComputerTarget()
-	pausedTarget, _ := paused.ComputerTarget()
-	if pausedTarget != beforeTarget {
-		t.Error("pause discarded the target, want the computer frozen exactly")
-	}
-	if got := paused.ComputerError(); got != drawn {
-		t.Errorf("paused error = %v, want the drawn %v", got, drawn)
-	}
-
 	resumed, effect := core.Update(paused, core.EventPauseToggle{})
-	if _, aimed := resumed.ComputerTarget(); aimed {
-		t.Error("resume kept the old target, want it discarded until the next observation")
-	}
-	if got := resumed.ComputerError(); got != drawn {
-		t.Errorf("resumed error = %v, want the drawn %v", got, drawn)
-	}
-
 	counting, countdownToken := beginServingRally(t, resumed, effect.Timer().Token)
 	if _, top := counting.PaddleTops(); top != 8 {
-		t.Errorf("paddle after the resume countdown = %d, want it centered again", top)
-	}
-	if got := counting.ComputerError(); got != drawn {
-		t.Errorf("error after the resume countdown = %v, want the drawn %v", got, drawn)
+		t.Fatalf("paddle after the resume countdown = %d, want it centered again", top)
 	}
 
-	for step := 1; step < 12; step++ {
+	for step := 1; step <= test.reaction; step++ {
 		counting = nextComputerStep(t, counting, countdownToken)
-		if _, aimed := counting.ComputerTarget(); aimed {
-			t.Fatalf("aimed %d steps after an approach restarted, want the full reaction delay", step)
+		if _, top := counting.PaddleTops(); top != 8 {
+			t.Fatalf("paddle moved to %d within the restarted %d step reaction delay", top, test.reaction)
 		}
 	}
-	counting = nextComputerStep(t, counting, countdownToken)
-	if _, aimed := counting.ComputerTarget(); !aimed {
-		t.Error("no target after the restarted 12 step reaction delay")
+	for range test.moveEvery {
+		counting = nextComputerStep(t, counting, countdownToken)
+		if _, top := counting.PaddleTops(); top != 8 {
+			return
+		}
 	}
+	t.Fatal("the resumed approach never re-aimed")
 }
 
-func TestRestartRepeatsTheComputerSeed(t *testing.T) {
+func TestRestartReplaysTheComputerTrajectory(t *testing.T) {
 	t.Parallel()
 
 	started, schedule := startComputerMatch(t, core.DifficultyHard)
 	served, rallyToken := beginServingRally(t, started, schedule.Timer().Token)
-	drawn := served.ComputerError()
 	played := advanceRally(t, served, rallyToken, 30)
 
 	paused, _ := core.Update(played, core.EventPauseToggle{})
 	restarted, effect := core.Update(focusPauseRow(t, paused, core.PauseRowRestart), core.EventPrimary{})
 	replayed, replayedToken := beginServingRally(t, restarted, effect.Timer().Token)
-	if got := replayed.ComputerError(); got != drawn {
-		t.Fatalf("restarted approach error = %v, want the original %v", got, drawn)
-	}
 
-	original, originalToken := served, rallyToken
-	for range 140 {
-		original = nextComputerStep(t, original, originalToken)
-		replayed = nextComputerStep(t, replayed, replayedToken)
-		_, originalTop := original.PaddleTops()
-		_, replayedTop := replayed.PaddleTops()
-		if originalTop != replayedTop {
-			t.Fatalf("restarted paddle top = %d, want the original %d", replayedTop, originalTop)
-		}
-		firstTarget, firstAimed := original.ComputerTarget()
-		secondTarget, secondAimed := replayed.ComputerTarget()
-		if firstTarget != secondTarget || firstAimed != secondAimed {
-			t.Fatalf("restarted target = %v (%v), want %v (%v)",
-				secondTarget, secondAimed, firstTarget, firstAimed)
-		}
-		if first, second := original.ComputerError(), replayed.ComputerError(); first != second {
-			t.Fatalf("restarted error = %v, want %v", second, first)
-		}
+	originalTrajectory := matchTrajectory(t, served, rallyToken, 140)
+	restartedTrajectory := matchTrajectory(t, replayed, replayedToken, 140)
+	if !slices.Equal(originalTrajectory, restartedTrajectory) {
+		t.Fatalf("restarted trajectory differs from the original at step %d",
+			firstDifference(originalTrajectory, restartedTrajectory))
 	}
 }
 
-func TestEachRematchGetsADifferentComputerSequence(t *testing.T) {
+func TestRematchesGetADifferentButReproducibleComputerSequence(t *testing.T) {
 	t.Parallel()
 
-	model, schedule := startComputerMatch(t, core.DifficultyHard)
-	opening, token := beginServingRally(t, model, schedule.Timer().Token)
-	errors := []float64{opening.ComputerError()}
-
-	finished := playToGameOver(t, opening, token)
-	for position := 1; position <= 2; position++ {
-		rematched, effect := core.Update(finished, core.EventPrimary{})
-		if got := rematched.ChainPosition(); got != uint8(position) {
-			t.Fatalf("chain position after rematch %d = %d", position, got)
-		}
-		next, nextToken := beginServingRally(t, rematched, effect.Timer().Token)
-		errors = append(errors, next.ComputerError())
-		finished = playToGameOver(t, next, nextToken)
+	openingA := computerSequence(t, 0)
+	openingB := computerSequence(t, 0)
+	if !slices.Equal(openingA, openingB) {
+		t.Fatal("the same match replayed a different trajectory")
 	}
 
-	for first := range errors {
-		for second := first + 1; second < len(errors); second++ {
-			if errors[first] == errors[second] {
-				t.Errorf("match %d and match %d drew the same error %v", first, second, errors[first])
-			}
-		}
+	rematchA := computerSequence(t, 1)
+	rematchB := computerSequence(t, 1)
+	if !slices.Equal(rematchA, rematchB) {
+		t.Fatal("the same rematch replayed a different trajectory")
+	}
+	if slices.Equal(openingA, rematchA) {
+		t.Fatal("the first rematch replayed the opening match's trajectory")
+	}
+
+	secondRematch := computerSequence(t, 2)
+	if slices.Equal(rematchA, secondRematch) {
+		t.Fatal("the second rematch replayed the first rematch's trajectory")
 	}
 }
 
@@ -328,32 +271,59 @@ func TestLocalTwoPlayerLeavesTheRightPaddleAlone(t *testing.T) {
 	if _, top := model.PaddleTops(); top != 8 {
 		t.Errorf("right paddle in Local two-player = %d, want the centered 8", top)
 	}
-	if _, aimed := model.ComputerTarget(); aimed {
-		t.Error("Local two-player produced a computer target")
-	}
-	if drawn := model.ComputerError(); drawn != 0 {
-		t.Errorf("Local two-player drew a computer error %v, want zero", drawn)
-	}
 }
 
-// assertMovedToward checks one computer movement was a single two-row step toward target. A move with the target
-// already inside the paddle's four rows is a failure: the computer skips that step.
-func assertMovedToward(t *testing.T, target float64, before, after uint8) {
+// computerSequence returns the first steps of a Hard match's trajectory after the given number of rematches. It builds
+// the chain from a fresh match each time, so two calls replay the same seeds.
+func computerSequence(t *testing.T, rematches int) []computerTrajectory {
 	t.Helper()
 
-	lastRow := float64(before) + core.PaddleHeight - 1
-	switch {
-	case target < float64(before):
-		if after != before-2 {
-			t.Fatalf("paddle moved from %d to %d toward target %v", before, after, target)
+	model, schedule := startComputerMatch(t, core.DifficultyHard)
+	model, token := beginServingRally(t, model, schedule.Timer().Token)
+	for range rematches {
+		var effect core.Effect
+		model = playToGameOver(t, model, token)
+		model, effect = core.Update(model, core.EventPrimary{})
+		if effect.Kind() != core.EffectScheduleTimer {
+			t.Fatalf("rematch requested %v, want the countdown's timer", effect.Kind())
 		}
-	case target > lastRow:
-		if after != before+2 {
-			t.Fatalf("paddle moved from %d to %d toward target %v", before, after, target)
-		}
-	default:
-		t.Fatalf("paddle moved with target %v already inside its span %d..%v", target, before, lastRow)
+		model, token = beginServingRally(t, model, effect.Timer().Token)
 	}
+
+	return matchTrajectory(t, model, token, 300)
+}
+
+// matchTrajectory spends fixed steps, following the timing token the match issues, and records what the player sees.
+func matchTrajectory(t *testing.T, model core.Model, token core.TimerToken, steps int) []computerTrajectory {
+	t.Helper()
+
+	trajectory := make([]computerTrajectory, 0, steps+1)
+	for range steps + 1 {
+		leftScore, rightScore := model.Score()
+		x, y := model.BallPosition()
+		leftTop, rightTop := model.PaddleTops()
+		trajectory = append(trajectory, computerTrajectory{
+			x: x, y: y, left: leftTop, right: rightTop, leftScore: leftScore, rightScore: rightScore,
+		})
+		var effect core.Effect
+		model, effect = core.Update(model, core.EventElapsed{Elapsed: core.StepDuration, Token: token})
+		if effect.Kind() == core.EffectScheduleTimer {
+			token = effect.Timer().Token
+		}
+	}
+
+	return trajectory
+}
+
+// firstDifference returns the index of the first trajectory step that differs, or -1.
+func firstDifference(one, other []computerTrajectory) int {
+	for index := range one {
+		if one[index] != other[index] {
+			return index
+		}
+	}
+
+	return -1
 }
 
 // startComputerMatch starts a Single player match at difficulty and returns the opening countdown's timer request.
@@ -390,46 +360,6 @@ func nextComputerStep(t *testing.T, model core.Model, token core.TimerToken) cor
 	}
 
 	return next
-}
-
-// steerLeftPaddle moves the left paddle so its span covers the ball where the current velocity would cross the left
-// paddle plane, reflecting through every wall as needed.
-func steerLeftPaddle(t *testing.T, model core.Model) core.Model {
-	t.Helper()
-
-	x, y := model.BallPosition()
-	vx, vy := model.BallVelocity()
-	if vx >= 0 {
-		return model
-	}
-	row := foldRow(y + float64(vy*((core.PaddleLeftColumn-x)/vx)))
-
-	return setPaddleTop(t, model, false, evenTopCovering(row))
-}
-
-// foldRow folds an unbounded row into the court through every wall.
-func foldRow(row float64) float64 {
-	period := 2 * float64(core.CourtHeight-1)
-	folded := math.Mod(row, period)
-	if folded < 0 {
-		folded += period
-	}
-	if folded > float64(core.CourtHeight-1) {
-		folded = period - folded
-	}
-
-	return folded
-}
-
-// evenTopCovering returns the even paddle top whose four rows contain row.
-func evenTopCovering(row float64) uint8 {
-	limit := core.CourtHeight - core.PaddleHeight
-	top := min(max(int(math.Floor(row/2))*2, 0), limit)
-	if row > float64(top+core.PaddleHeight-1) && top+2 <= limit {
-		top += 2
-	}
-
-	return uint8(top)
 }
 
 // playToGameOver spends fixed steps until the computer wins the match, keeping the human paddle still.

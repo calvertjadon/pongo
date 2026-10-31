@@ -98,7 +98,7 @@ func (random *generator) next() uint64 {
 // offset draws one uniform row offset in [-amplitude, +amplitude).
 func (random *generator) offset(amplitude float64) float64 {
 	top := random.next() >> 11
-	unit := float64(top) * unitFractionScale
+	unit := float64(float64(top) * unitFractionScale)
 	signed := unit + unit - 1
 
 	return float64(signed * amplitude)
@@ -106,7 +106,7 @@ func (random *generator) offset(amplitude float64) float64 {
 
 // seededComputer returns the generator a match at the given zero-based chain position and difficulty draws from. A
 // restart rebuilds the same seed and a rematch advances the position.
-func seededComputer(position uint8, difficulty Difficulty) generator {
+func seededComputer(position uint32, difficulty Difficulty) generator {
 	return generator(computerSeedMaterial ^ (uint64(position) << 8) ^ uint64(difficulty))
 }
 
@@ -123,7 +123,7 @@ type computer struct {
 
 // openedComputer returns the computer player a match starts with.
 func openedComputer(settings Settings, origin chain) computer {
-	if settings.Mode != ModeSinglePlayer {
+	if !settings.singlePlayer() {
 		return computer{}
 	}
 
@@ -154,6 +154,26 @@ func (computer *computer) endApproach() {
 	computer.aim = 0
 	computer.aimed = false
 	computer.error = 0
+}
+
+// suspend discards the target for a resume countdown while keeping the error drawn for the inbound approach. The full
+// reaction delay restarts when rally play resumes.
+func (computer *computer) suspend() {
+	computer.aimed = false
+	computer.approachSteps = 0
+}
+
+// resume restarts the reaction delay for an approach still in flight. The error drawn for the approach survives; the
+// target does not. A ball no longer incoming clears the approach.
+func (computer *computer) resume(incoming bool) {
+	if !incoming {
+		computer.endApproach()
+
+		return
+	}
+	computer.approach = true
+	computer.approachSteps = 0
+	computer.aimed = false
 }
 
 // due reports whether this approach step is a scheduled observation: the first reaction delay after the approach
@@ -217,16 +237,20 @@ func predictedRow(profile computerProfile, current ball) float64 {
 	return current.y
 }
 
+// computerProfile returns the difficulty profile of a Single player match, or false when the right paddle is human.
+func (match *matchState) computerProfile() (computerProfile, bool) {
+	if !match.settings.singlePlayer() {
+		return computerProfile{}, false
+	}
+
+	return profileFor(match.settings.Difficulty), true
+}
+
 // moveComputer spends one fixed match step of the computer's schedule. On a movement opportunity it takes at most one
 // two-row step toward target, and it does not move when the target already lies inside the paddle's rows.
 func (match *matchState) moveComputer(target float64) {
-	match.stepCount++
-	if match.settings.Mode != ModeSinglePlayer {
-		return
-	}
-
-	profile := profileFor(match.settings.Difficulty)
-	if match.stepCount%uint32(profile.moveEvery) != 0 {
+	profile, playing := match.computerProfile()
+	if !playing || match.stepCount%uint32(profile.moveEvery) != 0 {
 		return
 	}
 
@@ -243,12 +267,12 @@ func (match *matchState) moveComputer(target float64) {
 // a ball moving toward the computer without one starts it and draws its error; otherwise the approach counts the step
 // and samples the public match state at its scheduled moments.
 func (match *matchState) observeComputer() {
-	if match.settings.Mode != ModeSinglePlayer {
+	profile, playing := match.computerProfile()
+	if !playing {
 		return
 	}
 
 	computer := &match.computer
-	profile := profileFor(match.settings.Difficulty)
 	switch {
 	case match.ball.vx < 0:
 		computer.endApproach()
@@ -266,51 +290,22 @@ func (match *matchState) observeComputer() {
 // startServeApproach begins the approach when a launched serve travels toward the computer; a serve traveling away
 // leaves the computer centered.
 func (match *matchState) startServeApproach() {
-	if match.settings.Mode != ModeSinglePlayer {
+	profile, playing := match.computerProfile()
+	if !playing {
 		return
 	}
 	if match.serve.Horizontal == DirectionRight {
-		match.computer.beginApproach(profileFor(match.settings.Difficulty))
+		match.computer.beginApproach(profile)
 
 		return
 	}
 	match.computer.endApproach()
 }
 
-// resumeComputer restarts the computer's reaction delay when a paused inbound approach resumes. The error drawn for
-// the approach survives the pause; the target does not.
+// resumeComputer restarts the computer's reaction delay when a paused inbound approach resumes.
 func (match *matchState) resumeComputer() {
-	if match.settings.Mode != ModeSinglePlayer {
+	if _, playing := match.computerProfile(); !playing {
 		return
 	}
-	if match.ball.vx <= 0 {
-		match.computer.endApproach()
-
-		return
-	}
-	match.computer.approach = true
-	match.computer.approachSteps = 0
-	match.computer.aimed = false
-}
-
-// ComputerTarget returns the row the computer player aims its paddle span at and whether it currently has a target.
-// Without a target it moves toward the court center. It is meaningful only while Screen is ScreenMatch in Single
-// player mode.
-func (model Model) ComputerTarget() (row float64, aimed bool) {
-	if match, ok := model.state.(matchState); ok {
-		return match.computer.aim, match.computer.aimed
-	}
-
-	return 0, false
-}
-
-// ComputerError returns the row offset drawn for the computer player's current inbound approach, or zero when no
-// approach is active. The same offset applies to every target until the approach ends. It is meaningful only while
-// Screen is ScreenMatch in Single player mode.
-func (model Model) ComputerError() float64 {
-	if match, ok := model.state.(matchState); ok {
-		return match.computer.error
-	}
-
-	return 0
+	match.computer.resume(match.ball.vx > 0)
 }

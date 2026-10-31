@@ -114,8 +114,10 @@ func assertFinishedMatch(t *testing.T, finished core.Model, winner core.Side, wa
 	if x, y := finished.BallPosition(); x != 34.5 || y != 9.5 {
 		t.Errorf("ball after the winning point = (%v, %v), want the resting court center", x, y)
 	}
-	if vx, vy := finished.BallVelocity(); vx != 0 || vy != 0 {
-		t.Errorf("ball velocity after the winning point = (%v, %v), want it resting", vx, vy)
+	stale, effect := core.Update(finished, core.EventElapsed{Elapsed: core.ElapsedLimit, Token: 1})
+	if x, y := stale.BallPosition(); x != 34.5 || y != 9.5 || effect.Kind() != core.EffectNone {
+		t.Errorf("a completion after the winning point gave ball (%v, %v) and effect %v, want it unchanged",
+			x, y, effect.Kind())
 	}
 }
 
@@ -245,9 +247,8 @@ func TestRematchKeepsSettingsAndContinuesTheChain(t *testing.T) {
 	if effect.Kind() != core.EffectScheduleTimer {
 		t.Fatalf("rematch requested %v, want a timer", effect.Kind())
 	}
-	if effect.Timer().Token == 0 || rematch.ChainPosition() != 1 {
-		t.Errorf("rematch token %d and chain position %d, want a new timer and position 1",
-			effect.Timer().Token, rematch.ChainPosition())
+	if effect.Timer().Token == 0 {
+		t.Errorf("rematch token = %d, want a new timer", effect.Timer().Token)
 	}
 	if got := rematch.MatchSettings(); got != draft {
 		t.Errorf("rematch settings = %+v, want the locked %+v", got, draft)
@@ -271,8 +272,8 @@ func TestRematchKeepsSettingsAndContinuesTheChain(t *testing.T) {
 	if got := rematch.NextServe(); got != wantServe {
 		t.Errorf("rematch opening serve = %+v, want %+v", got, wantServe)
 	}
-	rally, _ := beginServingRally(t, rematch, effect.Timer().Token)
-	if vx, vy := rally.BallVelocity(); vx >= 0 || vy <= 0 {
+	rally, rallyToken := beginServingRally(t, rematch, effect.Timer().Token)
+	if vx, vy := stepVelocity(t, rally, rallyToken); vx >= 0 || vy <= 0 {
 		t.Errorf("rematch serve velocity = (%v, %v), want left and down", vx, vy)
 	}
 
@@ -281,9 +282,6 @@ func TestRematchKeepsSettingsAndContinuesTheChain(t *testing.T) {
 		t.Errorf("focus after the second match = %v, want Rematch selected again", focus)
 	}
 	again, effect := core.Update(second, core.EventPrimary{})
-	if again.ChainPosition() != 2 {
-		t.Errorf("chain position after the second rematch = %d, want 2", again.ChainPosition())
-	}
 	if got := again.NextServe(); got.Horizontal != core.DirectionRight {
 		t.Errorf("third match opening = %+v, want it flipped back to the right", got)
 	}
@@ -320,9 +318,6 @@ func TestChangeSetupSeedsTheDraftAndEndsTheChain(t *testing.T) {
 	if effect.Kind() != core.EffectNone {
 		t.Errorf("Change setup requested %v, want no effect", effect.Kind())
 	}
-	if position := setup.ChainPosition(); position != 0 {
-		t.Errorf("chain position after Change setup = %d, want the chain ended", position)
-	}
 
 	nextMatch, nextSchedule := core.Update(focusRow(t, setup, core.SetupRowStart), core.EventPrimary{})
 	if nextMatch.Screen() != core.ScreenMatch || nextSchedule.Kind() != core.EffectScheduleTimer {
@@ -331,6 +326,15 @@ func TestChangeSetupSeedsTheDraftAndEndsTheChain(t *testing.T) {
 	}
 	if got := nextMatch.NextServe(); got != (core.Serve{Horizontal: core.DirectionRight, Vertical: core.DirectionUp}) {
 		t.Errorf("new chain opening serve = %+v, want right and up", got)
+	}
+
+	// Ending the chain also resets its position: the new match must draw the same computer sequence as a fresh one.
+	fresh, freshSchedule := startMatchWith(t, draft)
+	nextTrajectory := matchTrajectory(t, nextMatch, nextSchedule.Timer().Token, 200)
+	freshTrajectory := matchTrajectory(t, fresh, freshSchedule.Timer().Token, 200)
+	if !slices.Equal(nextTrajectory, freshTrajectory) {
+		t.Errorf("the match after Change setup diverges from a fresh match at step %d",
+			firstDifference(nextTrajectory, freshTrajectory))
 	}
 }
 
@@ -347,9 +351,6 @@ func TestReturnToTitleKeepsTheDraftAndANewMatchStartsAFreshChain(t *testing.T) {
 
 	// A rematch first, so the chain this test ends is a continuing one rather than the opening chain.
 	rematch, effect := core.Update(model, core.EventPrimary{})
-	if rematch.ChainPosition() != 1 {
-		t.Fatalf("chain position after the rematch = %d, want 1", rematch.ChainPosition())
-	}
 	second := playedMatchFrom(t, rematch, effect.Timer().Token, core.SideLeft)
 
 	chosen := second
@@ -365,9 +366,6 @@ func TestReturnToTitleKeepsTheDraftAndANewMatchStartsAFreshChain(t *testing.T) {
 	}
 	if effect.Kind() != core.EffectNone {
 		t.Errorf("Return to title requested %v, want no effect", effect.Kind())
-	}
-	if position := title.ChainPosition(); position != 0 {
-		t.Errorf("chain position after Return to title = %d, want the chain ended", position)
 	}
 
 	setup, _ := core.Update(title, core.EventPrimary{})

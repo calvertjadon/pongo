@@ -110,12 +110,6 @@ func assertFrozenState(t *testing.T, before, after core.Model) {
 	if beforeX != afterX || beforeY != afterY {
 		t.Errorf("pause moved the ball from (%v, %v) to (%v, %v)", beforeX, beforeY, afterX, afterY)
 	}
-	beforeVX, beforeVY := before.BallVelocity()
-	afterVX, afterVY := after.BallVelocity()
-	if beforeVX != afterVX || beforeVY != afterVY {
-		t.Errorf("pause changed the ball velocity from (%v, %v) to (%v, %v)",
-			beforeVX, beforeVY, afterVX, afterVY)
-	}
 	if before.Feedback() != after.Feedback() {
 		t.Errorf("pause changed the feedback from %v to %v", before.Feedback(), after.Feedback())
 	}

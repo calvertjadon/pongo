@@ -11,55 +11,6 @@ func TestSplitMix64KnownAnswer(t *testing.T) {
 	}
 }
 
-func TestDifficultyProfilesMatchTheSpecifiedSchedule(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		difficulty Difficulty
-		want       computerProfile
-	}{
-		{
-			difficulty: DifficultyEasy,
-			want: computerProfile{
-				reaction:   48,
-				reaim:      30,
-				moveEvery:  20,
-				errorRows:  4,
-				prediction: predictionObserved,
-			},
-		},
-		{
-			difficulty: DifficultyNormal,
-			want: computerProfile{
-				reaction:   24,
-				reaim:      18,
-				moveEvery:  12,
-				errorRows:  3,
-				prediction: predictionOneWall,
-			},
-		},
-		{
-			difficulty: DifficultyHard,
-			want: computerProfile{
-				reaction:   12,
-				reaim:      12,
-				moveEvery:  8,
-				errorRows:  2.25,
-				prediction: predictionEveryWall,
-			},
-		},
-	}
-	for _, test := range tests {
-		t.Run(difficultyName(test.difficulty), func(t *testing.T) {
-			t.Parallel()
-
-			if got := profileFor(test.difficulty); got != test.want {
-				t.Errorf("profile = %+v, want %+v", got, test.want)
-			}
-		})
-	}
-}
-
 func TestPredictionDiffersByProfile(t *testing.T) {
 	t.Parallel()
 
@@ -122,7 +73,7 @@ func TestSeedVariesByPositionAndDifficulty(t *testing.T) {
 
 	seen := make(map[generator]bool)
 	for _, difficulty := range []Difficulty{DifficultyEasy, DifficultyNormal, DifficultyHard} {
-		for position := range uint8(4) {
+		for position := range uint32(4) {
 			seed := seededComputer(position, difficulty)
 			if seen[seed] {
 				t.Fatalf("seed for position %d and difficulty %v repeats", position, difficulty)

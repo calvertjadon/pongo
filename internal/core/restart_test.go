@@ -39,10 +39,9 @@ func TestRestartRestoresTheOriginalStartConditions(t *testing.T) {
 	}
 	assertScheduled(t, effect, token)
 
-	served, _ := beginServingRally(t, restarted, token)
-	if vx, vy := served.BallVelocity(); vx <= 0 || vy >= 0 {
-		t.Errorf("first serve after restart = (%v, %v), want toward the right player and up", vx, vy)
-	}
+	served, servedToken := beginServingRally(t, restarted, token)
+	afterOne := advanceRally(t, served, servedToken, 1)
+	assertBallStep(t, afterOne, 1)
 }
 
 // assertRestarted checks the match restarted at its original start conditions with its locked settings kept.
@@ -64,9 +63,6 @@ func assertRestarted(t *testing.T, restarted core.Model, draft core.Settings) {
 	}
 	if x, y := restarted.BallPosition(); x != 34.5 || y != 9.5 {
 		t.Errorf("ball after restart = (%v, %v), want the court center", x, y)
-	}
-	if vx, vy := restarted.BallVelocity(); vx != 0 || vy != 0 {
-		t.Errorf("ball velocity after restart = (%v, %v), want it resting", vx, vy)
 	}
 	if feedback := restarted.Feedback(); feedback != core.FeedbackNone {
 		t.Errorf("feedback after restart = %v, want none", feedback)

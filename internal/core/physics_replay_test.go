@@ -15,9 +15,9 @@ const contactTolerance = 1e-2
 func TestEndpointPaddleHitReboundsAtSixtyFiveDegrees(t *testing.T) {
 	t.Parallel()
 
-	model, contact := adaptiveContact(t, edgeTarget)
-	angle := reboundAngle(model)
-	if want := impactAngle(contact); math.Abs(angle-want) > 1e-6 {
+	hit := adaptiveContact(t, edgeTarget)
+	angle := reboundAngle(hit.vx, hit.vy)
+	if want := impactAngle(hit.contact); math.Abs(angle-want) > 1e-6 {
 		t.Errorf("endpoint rebound angle = %v degrees, want the map's %v", angle, want)
 	}
 	if math.Abs(math.Abs(angle)-65) > 0.5 {
@@ -28,9 +28,9 @@ func TestEndpointPaddleHitReboundsAtSixtyFiveDegrees(t *testing.T) {
 func TestCenterPaddleHitReboundsFlat(t *testing.T) {
 	t.Parallel()
 
-	model, contact := adaptiveContact(t, centerTarget)
-	angle := reboundAngle(model)
-	if want := impactAngle(contact); math.Abs(angle-want) > 1e-6 {
+	hit := adaptiveContact(t, centerTarget)
+	angle := reboundAngle(hit.vx, hit.vy)
+	if want := impactAngle(hit.contact); math.Abs(angle-want) > 1e-6 {
 		t.Errorf("center rebound angle = %v degrees, want the map's %v", angle, want)
 	}
 	if math.Abs(angle) > 0.5 {
@@ -44,10 +44,51 @@ type contact struct {
 	row float64
 }
 
+// contactHit is a replayed contact with the free-flight velocity the rebound sent the ball away at.
+type contactHit struct {
+	model   core.Model
+	contact contact
+	vx, vy  float64
+}
+
+// motion reconstructs the ball's velocity from the positions the core reports. Two consecutive equal steps are free
+// flight, so the step's position change is the velocity; a contact changes the step, so the estimate is dropped until
+// free flight resumes.
+type motion struct {
+	previousX, previousY   float64
+	previousDX, previousDY float64
+	primed                 bool
+	vx, vy                 float64
+	known                  bool
+}
+
+// reset starts tracking from the model's current position.
+func (motion *motion) reset(model core.Model) {
+	motion.previousX, motion.previousY = model.BallPosition()
+	motion.primed = false
+	motion.known = false
+}
+
+// observe records one step's position change and reports whether the ball flew free.
+func (motion *motion) observe(model core.Model) (float64, float64) {
+	x, y := model.BallPosition()
+	dx, dy := x-motion.previousX, y-motion.previousY
+	motion.known = motion.primed &&
+		math.Abs(dx-motion.previousDX) < 1e-9 && math.Abs(dy-motion.previousDY) < 1e-9
+	if motion.known {
+		motion.vx, motion.vy = dx*stepsPerSecond, dy*stepsPerSecond
+	}
+	motion.previousDX, motion.previousDY = dx, dy
+	motion.previousX, motion.previousY = x, y
+	motion.primed = true
+
+	return dx, dy
+}
+
 // adaptiveContact replays rallies until a paddle contact lands within contactTolerance of the row target names, and
 // returns the model after that contact. It reads only public accessors and drives paddle-step and elapsed events, so
 // it explores the reachable contact rows instead of hard-coding one event sequence.
-func adaptiveContact(t *testing.T, target func(row float64, top uint8) float64) (core.Model, contact) {
+func adaptiveContact(t *testing.T, target func(row float64, top uint8) float64) contactHit {
 	t.Helper()
 
 	random := randomSource{state: 21}
@@ -56,12 +97,12 @@ func adaptiveContact(t *testing.T, target func(row float64, top uint8) float64) 
 	for range 200 {
 		model, token := beginRally(t, core.ModeLocalTwoPlayer)
 		if hit, ok := searchContact(t, model, token, &random, target, &closest, &hits); ok {
-			return hit.model, hit.contact
+			return hit
 		}
 	}
 	t.Fatalf("no replayed contact landed inside the target window; closest %v over %d hits", closest, hits)
 
-	return core.Model{}, contact{}
+	return contactHit{}
 }
 
 // searchContact drives one rally, moving the approached paddle to a covering top before every crossing, until a
@@ -74,14 +115,17 @@ func searchContact(
 	target func(row float64, top uint8) float64,
 	closest *float64,
 	hits *int,
-) (found struct {
-	model   core.Model
-	contact contact
-}, ok bool) {
+) (contactHit, bool) {
 	t.Helper()
 
+	var tracking motion
+	tracking.reset(model)
+	var lastDirection float64
+	var previousTarget bool
+	var previousRow float64
+	var previousTop uint8
 	for range 3000 {
-		row, right, crossing := predictedContact(model)
+		row, right, crossing := predictedContact(model, tracking)
 		var chosen uint8
 		movable := false
 		isTarget := false
@@ -100,31 +144,40 @@ func searchContact(
 			*hits++
 		}
 
-		lastVX, _ := model.BallVelocity()
 		var effect core.Effect
 		model, effect = core.Update(model, core.EventElapsed{Elapsed: core.StepDuration, Token: token})
 		if effect.Kind() != core.EffectScheduleTimer {
-			return found, false
+			return contactHit{}, false
 		}
-		if vx, _ := model.BallVelocity(); (vx > 0) != (lastVX > 0) && isTarget {
-			found.model = model
-			found.contact = contact{top: chosen, row: row}
+		dx, dy := tracking.observe(model)
+		direction := math.Copysign(1, dx)
+		reversed := lastDirection != 0 && direction != lastDirection
+		lastDirection = direction
 
-			return found, true
+		// The paddle contact happened in the previous step; the free step after it reversed the ball's travel and
+		// carried the new velocity.
+		if reversed && previousTarget {
+			return contactHit{
+				model:   model,
+				contact: contact{top: previousTop, row: previousRow},
+				vx:      dx * stepsPerSecond,
+				vy:      dy * stepsPerSecond,
+			}, true
 		}
+		previousTarget, previousRow, previousTop = isTarget, row, chosen
 	}
 
-	return found, false
+	return contactHit{}, false
 }
 
 // predictedContact returns the paddle contact row this step will reach, which side of the court it is on, and whether
 // a contact is predicted at all. A wall contact before the paddle plane invalidates the prediction.
-func predictedContact(model core.Model) (row float64, right, ok bool) {
-	x, y := model.BallPosition()
-	vx, vy := model.BallVelocity()
-	if vx == 0 {
+func predictedContact(model core.Model, tracking motion) (row float64, right, ok bool) {
+	if !tracking.known || tracking.vx == 0 {
 		return 0, false, false
 	}
+	x, y := model.BallPosition()
+	vx, vy := tracking.vx, tracking.vy
 	plane := float64(core.PaddleRightColumn)
 	right = true
 	if vx < 0 {
@@ -132,14 +185,14 @@ func predictedContact(model core.Model) (row float64, right, ok bool) {
 		right = false
 	}
 	time := (plane - x) / vx
-	if time < 0 || time > 1.0/120 {
+	if time < 0 || time > 1.0/stepsPerSecond {
 		return 0, right, false
 	}
 	if wallBefore(y, vy, time) {
 		return 0, right, false
 	}
 
-	return y + vy*time, right, true
+	return y + float64(vy*time), right, true
 }
 
 // wallBefore reports whether the ball reaches a wall before this step's paddle contact, which makes the predicted
@@ -214,10 +267,8 @@ func centerTarget(row float64, top uint8) float64 {
 	return math.Abs(row - (float64(top) + 1.5))
 }
 
-// reboundAngle returns the visual angle a rebound leaves a paddle at, away from the paddle, in degrees.
-func reboundAngle(model core.Model) float64 {
-	vx, vy := model.BallVelocity()
-
+// reboundAngle returns the visual angle a velocity leaves a paddle at in degrees.
+func reboundAngle(vx, vy float64) float64 {
 	return math.Atan2(2*vy, math.Abs(vx)) * 180 / math.Pi
 }
 

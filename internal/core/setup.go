@@ -52,12 +52,16 @@ func nextAvailableRow(row SetupRow, direction VerticalDirection, mode Mode) Setu
 
 // stepRow moves one row in direction, wrapping between the first and last rows.
 func stepRow(row SetupRow, direction VerticalDirection) SetupRow {
-	const rows = SetupRowStart + 1
+	return wrapped(row, SetupRowStart+1, direction)
+}
+
+// wrapped moves one zero-based menu row in direction and wraps between the first and last of count rows.
+func wrapped[T ~uint8](row, count T, direction VerticalDirection) T {
 	switch direction {
 	case DirectionUp:
-		return (row + rows - 1) % rows
+		return (row + count - 1) % count
 	case DirectionDown:
-		return (row + 1) % rows
+		return (row + 1) % count
 	}
 
 	return row

@@ -144,7 +144,7 @@ func TestCountdownCompletesIntoAServingRally(t *testing.T) {
 	if x, y := completed.BallPosition(); x != 34.5 || y != 9.5 {
 		t.Errorf("ball after countdown = (%v, %v), want the court center (34.5, 9.5)", x, y)
 	}
-	vx, vy := completed.BallVelocity()
+	vx, vy := stepVelocity(t, completed, effect.Timer().Token)
 	assertClose(t, "serve vx", vx, 28*math.Cos(20*math.Pi/180))
 	assertClose(t, "serve vy", vy, -28*math.Sin(20*math.Pi/180)/2)
 	if feedback := completed.Feedback(); feedback != core.FeedbackNone {

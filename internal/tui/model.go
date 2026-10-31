@@ -51,7 +51,9 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return model, nil
 		}
 
-		delivered, effect := model.deliver(message.elapsed())
+		event := model.timer.elapsed(message)
+		model.timer.baseline = message.Fired
+		delivered, effect := model.deliver(event)
 		if effect.Kind() != core.EffectScheduleTimer {
 			delivered.timer = delivered.timer.stopped()
 		}

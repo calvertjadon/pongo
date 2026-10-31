@@ -13,6 +13,47 @@ import (
 // tickPeriod is the host time one shell timer reports: 75 ms, or nine fixed steps.
 const tickPeriod = 75 * time.Millisecond
 
+// timerTape supplies completion fire times on a synthetic clock that advances one period per completion. Anchoring it
+// once keeps the reported elapsed time at the requested period however fast or slow the test runs.
+type timerTape struct {
+	fired time.Time
+}
+
+// newTimerTape starts a tape at the host clock.
+func newTimerTape() *timerTape {
+	return &timerTape{fired: time.Now()}
+}
+
+// next returns the tape's next fire time.
+func (tape *timerTape) next(period time.Duration) time.Time {
+	tape.fired = tape.fired.Add(period)
+
+	return tape.fired
+}
+
+// probeTimer delivers one completion for the shell's live timer request at the given fire time. It discovers the
+// request number from the shell's response instead of assuming the private numbering, and returns the updated model,
+// the shell's next timer request, and the completion it honored.
+func probeTimer(
+	t *testing.T,
+	model tea.Model,
+	token core.TimerToken,
+	fired time.Time,
+) (tea.Model, tea.Cmd, tui.TimerMsg) {
+	t.Helper()
+
+	for issue := uint64(0); issue < 2048; issue++ {
+		message := tui.TimerMsg{Token: token, Issue: issue, Fired: fired}
+		updated, cmd := model.Update(message)
+		if cmd != nil {
+			return updated, cmd, message
+		}
+	}
+	t.Fatalf("no completion matched the shell's live timer request for token %d", token)
+
+	return model, nil, tui.TimerMsg{}
+}
+
 func TestStartingAMatchSchedulesATimerForTheCountdown(t *testing.T) {
 	t.Parallel()
 
@@ -30,11 +71,10 @@ func TestCountdownCompletesThroughShellTimers(t *testing.T) {
 		t.Fatal("starting a match scheduled no timer")
 	}
 
-	clock := time.Unix(1_700_000_000, 0)
-	for issue := uint64(1); ; issue++ {
-		fired := clock.Add(tickPeriod)
-		updated, next := model.Update(tui.TimerMsg{Token: 1, Issue: issue, Scheduled: clock, Fired: fired})
-		model, clock = updated, fired
+	tape := newTimerTape()
+	for range 100 {
+		updated, next, _ := probeTimer(t, model, 1, tape.next(tickPeriod))
+		model = updated
 
 		if completed(model) {
 			if next == nil {
@@ -44,40 +84,36 @@ func TestCountdownCompletesThroughShellTimers(t *testing.T) {
 			return
 		}
 		if next == nil {
-			t.Fatalf("timer issue %d advanced the countdown but requested no next timer", issue)
-		}
-		if issue == 100 {
-			t.Fatal("countdown never completed through shell timers")
+			t.Fatal("a countdown completion advanced the countdown but requested no next timer")
 		}
 	}
+	t.Fatal("countdown never completed through shell timers")
 }
 
 func TestRallyTimersMoveTheBallThroughTheShell(t *testing.T) {
 	t.Parallel()
 
 	model, _ := startMatchInShell(t)
-	clock := time.Unix(1_700_000_000, 0)
-	var issue uint64
-	for issue = 1; ; issue++ {
-		fired := clock.Add(tickPeriod)
-		updated, next := model.Update(tui.TimerMsg{Token: 1, Issue: issue, Scheduled: clock, Fired: fired})
-		model, clock = updated, fired
+	tape := newTimerTape()
+	var countdownToken core.TimerToken = 1
+	for range 100 {
+		var next tea.Cmd
+		model, next, _ = probeTimer(t, model, countdownToken, tape.next(tickPeriod))
 		if completed(model) {
 			if next == nil {
 				t.Fatal("the countdown completion requested no rally timer")
 			}
+			countdownToken = 2 // the rally's own sequence
 
 			break
 		}
 		if next == nil {
-			t.Fatalf("timer issue %d advanced the countdown but requested no next timer", issue)
+			t.Fatal("a countdown completion advanced the countdown but requested no next timer")
 		}
 	}
 
 	before := model.View().Content
-	updated, cmd := model.Update(
-		tui.TimerMsg{Token: 2, Issue: issue + 1, Scheduled: clock, Fired: clock.Add(tickPeriod)},
-	)
+	updated, cmd, _ := probeTimer(t, model, countdownToken, tape.next(tickPeriod))
 	if cmd == nil {
 		t.Error("a rally completion requested no next timer")
 	}
@@ -90,13 +126,12 @@ func TestShellDropsObsoleteTimerCompletions(t *testing.T) {
 	t.Parallel()
 
 	model, _ := startMatchInShell(t)
-	clock := time.Unix(1_700_000_000, 0)
-	once, cmd := model.Update(tui.TimerMsg{Token: 1, Issue: 1, Scheduled: clock, Fired: clock.Add(tickPeriod)})
+	once, cmd, message := probeTimer(t, model, 1, newTimerTape().next(tickPeriod))
 	if cmd == nil {
 		t.Fatal("the first completion requested no next timer")
 	}
 
-	stale, staleCmd := once.Update(tui.TimerMsg{Token: 1, Issue: 1, Scheduled: clock, Fired: clock.Add(tickPeriod)})
+	stale, staleCmd := once.Update(message)
 	if staleCmd != nil {
 		t.Error("an obsolete completion requested another timer")
 	}
@@ -109,9 +144,8 @@ func TestShellReportsForeignTokensThatTheCoreIgnores(t *testing.T) {
 	t.Parallel()
 
 	model, _ := startMatchInShell(t)
-	clock := time.Unix(1_700_000_000, 0)
 
-	foreign, cmd := model.Update(tui.TimerMsg{Token: 99, Issue: 1, Scheduled: clock, Fired: clock.Add(tickPeriod)})
+	foreign, cmd := model.Update(tui.TimerMsg{Token: 99, Fired: time.Now().Add(tickPeriod)})
 	if cmd != nil {
 		t.Error("a foreign token requested the next timer")
 	}
@@ -217,10 +251,9 @@ func TestShellIgnoresTimersItNeverRequested(t *testing.T) {
 	t.Parallel()
 
 	model := sized(tui.NewModel())
-	clock := time.Unix(1_700_000_000, 0)
 	for _, message := range []tui.TimerMsg{
-		{Token: 1, Issue: 0, Scheduled: clock, Fired: clock.Add(tickPeriod)},
-		{Token: 1, Issue: 1, Scheduled: clock, Fired: clock.Add(tickPeriod)},
+		{Token: 1, Issue: 0, Fired: time.Now().Add(tickPeriod)},
+		{Token: 1, Issue: 1, Fired: time.Now().Add(tickPeriod)},
 	} {
 		updated, cmd := model.Update(message)
 		if cmd != nil {
@@ -229,5 +262,35 @@ func TestShellIgnoresTimersItNeverRequested(t *testing.T) {
 		if updated.View().Content != model.View().Content {
 			t.Errorf("message %+v changed the title view", message)
 		}
+	}
+}
+
+func TestCompletionReportsTheGapSinceThePreviousCompletion(t *testing.T) {
+	t.Parallel()
+
+	model, _ := startMatchInShell(t)
+	application := startedMatchInShell(t)
+	var countdownToken core.TimerToken = 1
+
+	// The first completion fired 100 ms before the loop handled it, so it contributes no time; the second fires now,
+	// 100 ms after the first. Measuring from the previous fire reports the whole gap, while measuring from when the
+	// next timer was requested would lose the stalled 100 ms.
+	fired := time.Now().Add(-100 * time.Millisecond)
+	model, next, _ := probeTimer(t, model, countdownToken, fired)
+	if next == nil {
+		t.Fatal("the first completion requested no next timer")
+	}
+	application, _ = core.Update(application, core.EventElapsed{Token: countdownToken})
+
+	model, next, _ = probeTimer(t, model, countdownToken, fired.Add(100*time.Millisecond))
+	if next == nil {
+		t.Fatal("the delayed completion requested no next timer")
+	}
+	application, _ = core.Update(
+		application,
+		core.EventElapsed{Elapsed: 12000, Token: countdownToken}, // 100 milliseconds in core units
+	)
+	if got, want := model.View().Content, tui.Render(application, 80, 28); got != want {
+		t.Fatal("the shell did not report the stalled completion's full elapsed time")
 	}
 }

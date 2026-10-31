@@ -8,37 +8,42 @@ import (
 	"github.com/calvertjadon/pongo/internal/core"
 )
 
-// TimerMsg is one timer completion. It carries the correlation the shell requested and both host timestamps, so the
-// model measures elapsed time from the message instead of reading a clock, and tests can build completions.
+// TimerMsg is one timer completion. It carries the correlation the shell requested and when the host ran the timer
+// command, so the model measures elapsed time from the previous completion instead of reading a clock, and tests can
+// build completions.
 type TimerMsg struct {
 	// Token is the core timing sequence the timer belongs to.
 	Token core.TimerToken
 	// Issue is the shell's request number for that sequence; only the latest issue is honored.
 	Issue uint64
-	// Scheduled is when the shell requested the timer.
-	Scheduled time.Time
 	// Fired is when the host ran the timer command.
 	Fired time.Time
 }
 
-// elapsed converts one completion into the core's elapsed event.
-func (message TimerMsg) elapsed() core.Event {
-	return core.EventElapsed{Elapsed: coreDuration(message.Fired.Sub(message.Scheduled)), Token: message.Token}
+// elapsed converts one completion into the core's elapsed event, measured from the sequence's baseline: the previous
+// completion's fire time, or when the sequence (or a recovery) was started.
+func (chain timerChain) elapsed(message TimerMsg) core.Event {
+	return core.EventElapsed{Elapsed: coreDuration(message.Fired.Sub(chain.baseline)), Token: message.Token}
 }
 
 // timerChain is the shell's timer scheduling state: the request it issued last, a request number that tells each
-// issued timer apart, and whether a timing sequence is still owed time. A resumed sequence can leave two timers in
-// flight, so only the latest issue is honored.
+// issued timer apart, the fire time elapsed is measured from, and whether a timing sequence is still owed time. A
+// resumed sequence can leave two timers in flight, so only the latest issue is honored.
 type timerChain struct {
-	token core.TimerToken
-	delay core.Duration
-	issue uint64
-	live  bool
+	token    core.TimerToken
+	delay    core.Duration
+	issue    uint64
+	baseline time.Time
+	live     bool
 }
 
-// requested records a core timer request as the chain's latest one. The sequence stays live until the core answers a
-// completion without asking for another timer.
+// requested records a core timer request as the chain's latest one. A sequence that starts, or whose token changes,
+// measures from this request; a continuing sequence measures from the previous completion. The sequence stays live
+// until the core answers a completion without asking for another timer.
 func (chain timerChain) requested(timer core.Timer) timerChain {
+	if !chain.live || timer.Token != chain.token {
+		chain.baseline = time.Now()
+	}
 	chain.token = timer.Token
 	chain.delay = timer.Delay
 	chain.issue++
@@ -70,16 +75,17 @@ func (chain timerChain) resumed() (timerChain, tea.Cmd) {
 		return chain, nil
 	}
 	chain.issue++
+	chain.baseline = time.Now()
 
 	return chain, chain.tick()
 }
 
 // tick asks the host for one timer completion for the chain's latest request.
 func (chain timerChain) tick() tea.Cmd {
-	scheduled := time.Now()
+	token, issue := chain.token, chain.issue
 
 	return tea.Tick(hostDuration(chain.delay), func(fired time.Time) tea.Msg {
-		return TimerMsg{Token: chain.token, Issue: chain.issue, Scheduled: scheduled, Fired: fired}
+		return TimerMsg{Token: token, Issue: issue, Fired: fired}
 	})
 }
 

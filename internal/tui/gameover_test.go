@@ -184,9 +184,8 @@ func TestGameOverRecoveryDoesNotRearmAStoppedTimerChain(t *testing.T) {
 	t.Parallel()
 
 	model, application := shellGameOver(t)
-	frame := time.Unix(1_700_000_000, 0)
 
-	stale, cmd := model.Update(tui.TimerMsg{Token: 1, Issue: 1, Scheduled: frame, Fired: frame.Add(tickPeriod)})
+	stale, cmd := model.Update(tui.TimerMsg{Token: 1, Fired: time.Now().Add(tickPeriod)})
 	if cmd != nil {
 		t.Error("a completion after the winning point scheduled another timer")
 	}
@@ -217,11 +216,19 @@ func shellGameOver(t *testing.T) (tea.Model, core.Model) {
 	}
 	application := startedMatchInShell(t)
 
-	token, issue := core.TimerToken(1), uint64(1)
-	clock := time.Unix(1_700_000_000, 0)
+	// The countdown's first request is discovered from the shell's response; every honored completion then asks for
+	// the next request number.
+	token := core.TimerToken(1)
+	tape := newTimerTape()
+	model, next, message := probeTimer(t, model, token, tape.next(tickPeriod))
+	if next == nil {
+		t.Fatal("the first completion requested no next timer")
+	}
+	application, _ = core.Update(application, core.EventElapsed{Elapsed: core.ElapsedLimit, Token: token})
+	issue := message.Issue + 1
+
 	for range 5000 {
-		fired := clock.Add(tickPeriod)
-		updated, next := model.Update(tui.TimerMsg{Token: token, Issue: issue, Scheduled: clock, Fired: fired})
+		updated, next := model.Update(tui.TimerMsg{Token: token, Issue: issue, Fired: tape.next(tickPeriod)})
 		model = updated
 		var effect core.Effect
 		application, effect = core.Update(application, core.EventElapsed{
@@ -243,7 +250,7 @@ func shellGameOver(t *testing.T) (tea.Model, core.Model) {
 			t.Fatalf("a live match answered a completion with %v", effect.Kind())
 		}
 
-		token, issue, clock = effect.Timer().Token, issue+1, fired
+		token, issue = effect.Timer().Token, issue+1
 	}
 	t.Fatal("the match never ended")
 

@@ -15,12 +15,18 @@ func TestPauseKeyFreezesTheMatchInTheShell(t *testing.T) {
 	t.Parallel()
 
 	model, _ := startMatchInShell(t)
+	application := startedMatchInShell(t)
+	model, _, first := probeTimer(t, model, 1, newTimerTape().next(tickPeriod))
+	application, _ = core.Update(
+		application,
+		core.EventElapsed{Elapsed: core.ElapsedLimit, Token: 1},
+	)
+
 	paused, cmd := model.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
 	if cmd != nil {
 		t.Error("the pause key produced a command, want none")
 	}
 
-	application := startedMatchInShell(t)
 	frozen, _ := core.Update(application, core.EventPauseToggle{})
 	if content := paused.View().Content; content != tui.Render(frozen, 80, 28) {
 		t.Error("the pause key does not show the frozen match behind the overlay")
@@ -30,8 +36,9 @@ func TestPauseKeyFreezesTheMatchInTheShell(t *testing.T) {
 	}
 
 	// The countdown timer the shell already requested changes nothing while paused.
-	clock := time.Unix(1_700_000_000, 0)
-	after, afterCmd := paused.Update(tui.TimerMsg{Token: 1, Issue: 1, Scheduled: clock, Fired: clock.Add(tickPeriod)})
+	after, afterCmd := paused.Update(
+		tui.TimerMsg{Token: 1, Issue: first.Issue + 1, Fired: time.Now().Add(tickPeriod)},
+	)
 	if afterCmd != nil {
 		t.Error("a timer completion while paused requested another timer")
 	}
@@ -90,8 +97,7 @@ func TestResumeRearmsTheTimerChainAndDropsThePrePauseTimer(t *testing.T) {
 		t.Fatal("resume did not request the countdown's timer")
 	}
 
-	clock := time.Unix(1_700_000_000, 0)
-	stale, staleCmd := resumed.Update(tui.TimerMsg{Token: 1, Issue: 1, Scheduled: clock, Fired: clock.Add(tickPeriod)})
+	stale, staleCmd := resumed.Update(tui.TimerMsg{Token: 1, Fired: time.Now().Add(tickPeriod)})
 	if staleCmd != nil {
 		t.Error("the pre-pause timer requested another timer after resume")
 	}
@@ -99,13 +105,12 @@ func TestResumeRearmsTheTimerChainAndDropsThePrePauseTimer(t *testing.T) {
 		t.Error("the pre-pause timer changed the resumed view")
 	}
 
-	fresh, freshCmd := resumed.Update(tui.TimerMsg{Token: 2, Issue: 2, Scheduled: clock, Fired: clock.Add(tickPeriod)})
+	fresh, freshCmd, message := probeTimer(t, resumed, 2, newTimerTape().next(tickPeriod))
 	if freshCmd == nil {
 		t.Error("the resume countdown timer requested no next timer")
 	}
-	if duplicate, duplicateCmd := fresh.Update(
-		tui.TimerMsg{Token: 2, Issue: 2, Scheduled: clock, Fired: clock.Add(tickPeriod)},
-	); duplicateCmd != nil || duplicate.View().Content != fresh.View().Content {
+	if duplicate, duplicateCmd := fresh.Update(message); duplicateCmd != nil ||
+		duplicate.View().Content != fresh.View().Content {
 		t.Error("a duplicate resume timer changed the match")
 	}
 }
@@ -114,10 +119,10 @@ func TestRecoveryWhilePausedDoesNotRearmAStoppedChain(t *testing.T) {
 	t.Parallel()
 
 	model, _ := startMatchInShell(t)
+	model, _, first := probeTimer(t, model, 1, newTimerTape().next(tickPeriod))
 	paused, _ := model.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
-	clock := time.Unix(1_700_000_000, 0)
 	answered, cmd := paused.Update(
-		tui.TimerMsg{Token: 1, Issue: 1, Scheduled: clock, Fired: clock.Add(tickPeriod)},
+		tui.TimerMsg{Token: 1, Issue: first.Issue + 1, Fired: time.Now().Add(tickPeriod)},
 	)
 	if cmd != nil {
 		t.Fatal("the paused core answered a completion with a timer, want the chain stopped")

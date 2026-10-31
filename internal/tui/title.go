@@ -18,6 +18,8 @@ func Render(application core.Model, width, height int) string {
 		return placeFixed(renderTitle(), width, height)
 	case core.ScreenSetup:
 		return placeFixed(renderSetup(application.Draft(), application.SetupFocus()), width, height)
+	case core.ScreenMatch:
+		return placeFixed(renderMatch(application), width, height)
 	default:
 		return ""
 	}

@@ -23,14 +23,16 @@ func updateSetup(model Model, setup setupState, event Event) (Model, Effect) {
 		model.draft = adjustDraft(model.draft, setup.focus, event.Direction)
 		return model, Effect{}
 	case EventPrimary:
-		if setup.focus != SetupRowStart {
-			model.state = setupState{focus: nextAvailableRow(setup.focus, DirectionDown, model.draft.Mode)}
+		if setup.focus == SetupRowStart {
+			return startMatch(model)
 		}
+
+		model.state = setupState{focus: nextAvailableRow(setup.focus, DirectionDown, model.draft.Mode)}
 		return model, Effect{}
 	case EventBack:
 		model.state = titleState{}
 		return model, Effect{}
-	case EventQuit:
+	case EventQuit, EventPaddleStep, EventElapsed:
 		return model, Effect{}
 	}
 

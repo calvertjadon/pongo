@@ -20,7 +20,7 @@ func TestHelpWorksWithoutTerminal(t *testing.T) {
 	t.Parallel()
 
 	pongo := buildPongo(t)
-	for _, argument := range []string{"--help", "-h"} {
+	for _, argument := range []string{"--help"} {
 		t.Run(argument, func(t *testing.T) {
 			t.Parallel()
 
@@ -63,6 +63,7 @@ func TestUnsupportedArgumentsExitWithUsageStatus(t *testing.T) {
 	for _, arguments := range [][]string{
 		{"--bogus"},
 		{"-x"},
+		{"-h"},
 		{"play"},
 		{"--help", "extra"},
 		{"--version", "extra"},

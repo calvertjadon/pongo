@@ -23,7 +23,7 @@ Pongo is classic Pong in the terminal. Run it without arguments in an
 interactive terminal of at least 80 by 28 cells.
 
 Options:
-  -h, --help     Print this help and exit.
+  --help         Print this help and exit.
   --version      Print the version and exit.
 `
 
@@ -81,7 +81,7 @@ func parseCommand(arguments []string) (command, error) {
 	}
 
 	switch arguments[0] {
-	case "-h", "--help":
+	case "--help":
 		return commandHelp, nil
 	case "--version":
 		return commandVersion, nil

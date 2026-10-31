@@ -179,7 +179,7 @@ func verifyReleaseInvocations(t *testing.T, executable, version string) {
 	if reported := reportedVersion(t, executable); reported != version {
 		t.Fatalf("pongo --version printed %q, want %q", reported, version)
 	}
-	for _, argument := range []string{"--help", "-h"} {
+	for _, argument := range []string{"--help"} {
 		result := runWithoutTerminal(t, executable, argument)
 		if result.status != 0 || result.stdout == "" || result.stderr != "" {
 			t.Fatalf("pongo %s exited %d, stdout %q, stderr %q; want usage on standard output",

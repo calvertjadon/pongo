@@ -128,6 +128,9 @@ func TestMatchControlsFollowTheMode(t *testing.T) {
 	if !strings.Contains(single, "W/S") || !strings.Contains(single, "Up/Down") {
 		t.Errorf("single-player controls = %q, want both binding groups", single)
 	}
+	if strings.Contains(single, "Player 2") || strings.Contains(single, "CPU") {
+		t.Errorf("single-player controls = %q, want no controls for the computer's paddle", single)
+	}
 }
 
 // beginRally starts a match in mode, spends the opening countdown, and returns the rally with its timer token.

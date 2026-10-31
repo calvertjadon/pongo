@@ -300,7 +300,9 @@ func TestChangeSetupSeedsTheDraftAndEndsTheChain(t *testing.T) {
 		WinningScore: core.WinningScore11,
 		Difficulty:   core.DifficultyHard,
 	}
-	finished := playedMatch(t, draft, core.SideLeft)
+	started, schedule := startMatchWith(t, draft)
+	rally, token := beginServingRally(t, started, schedule.Timer().Token)
+	finished := playToGameOver(t, rally, token)
 
 	chosen := finished
 	for chosen.GameOverFocus() != core.GameOverRowChangeSetup {
@@ -322,12 +324,12 @@ func TestChangeSetupSeedsTheDraftAndEndsTheChain(t *testing.T) {
 		t.Errorf("chain position after Change setup = %d, want the chain ended", position)
 	}
 
-	started, schedule := core.Update(focusRow(t, setup, core.SetupRowStart), core.EventPrimary{})
-	if started.Screen() != core.ScreenMatch || schedule.Kind() != core.EffectScheduleTimer {
+	nextMatch, nextSchedule := core.Update(focusRow(t, setup, core.SetupRowStart), core.EventPrimary{})
+	if nextMatch.Screen() != core.ScreenMatch || nextSchedule.Kind() != core.EffectScheduleTimer {
 		t.Fatalf("Start match after Change setup gave screen %v and effect %v, want a match countdown",
-			started.Screen(), schedule.Kind())
+			nextMatch.Screen(), nextSchedule.Kind())
 	}
-	if got := started.NextServe(); got != (core.Serve{Horizontal: core.DirectionRight, Vertical: core.DirectionUp}) {
+	if got := nextMatch.NextServe(); got != (core.Serve{Horizontal: core.DirectionRight, Vertical: core.DirectionUp}) {
 		t.Errorf("new chain opening serve = %+v, want right and up", got)
 	}
 }

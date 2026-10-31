@@ -107,6 +107,7 @@ func returnToTitle(model Model) (Model, Effect) {
 func resumeMatch(model Model, match matchState, paused pausedPhase) (Model, Effect) {
 	token := model.issueToken()
 	match.elapsed = 0
+	match.suspendComputer()
 	match.phase = countdownPhase{
 		remaining:    CountdownSteps,
 		token:        token,
@@ -115,6 +116,16 @@ func resumeMatch(model Model, match matchState, paused pausedPhase) (Model, Effe
 	model.state = match
 
 	return model, scheduleTimer(token, TimerDelay)
+}
+
+// suspendComputer discards the computer's target for a resume countdown while keeping the error drawn for the inbound
+// approach. The full reaction delay restarts when rally play resumes.
+func (match *matchState) suspendComputer() {
+	if match.settings.Mode != ModeSinglePlayer {
+		return
+	}
+	match.computer.aimed = false
+	match.computer.approachSteps = 0
 }
 
 // resumedContinuation returns what the countdown after a pause must do when it completes.

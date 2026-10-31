@@ -160,15 +160,17 @@ type ball struct {
 
 // matchState is one match in progress. It owns the settings it locked and everything it accumulates.
 type matchState struct {
-	settings Settings
-	origin   chain
-	score    score
-	paddles  paddles
-	ball     ball
-	serve    Serve
-	feedback Feedback
-	elapsed  Duration
-	phase    matchPhase
+	settings  Settings
+	origin    chain
+	score     score
+	paddles   paddles
+	ball      ball
+	serve     Serve
+	feedback  Feedback
+	elapsed   Duration
+	stepCount uint32
+	computer  computer
+	phase     matchPhase
 }
 
 // startMatch locks the draft, begins a new rematch chain, initializes match data, and enters the opening countdown.
@@ -197,6 +199,7 @@ func openedMatch(settings Settings, origin chain, token TimerToken) matchState {
 		paddles:  paddles{left: paddleStartTop, right: paddleStartTop},
 		ball:     resetBall(),
 		serve:    Serve{Horizontal: origin.opening, Vertical: origin.vertical},
+		computer: openedComputer(settings, origin),
 		phase: countdownPhase{
 			remaining:    CountdownSteps,
 			token:        token,
@@ -260,11 +263,21 @@ func advanceCountdown(
 
 	var steps Steps
 	match, steps = match.acceptedTime(elapsed.Elapsed)
-	if steps >= countdown.remaining {
+	for range steps {
+		if countdown.remaining == 0 {
+			break
+		}
+		match.moveComputer(computerCenterRow)
+		countdown.remaining--
+	}
+	if countdown.remaining == 0 {
 		token := model.issueToken()
 		match.elapsed = 0
 		if countdown.continuation.startsServe() {
 			match.ball = servedBall(match.serve)
+			match.startServeApproach()
+		} else {
+			match.resumeComputer()
 		}
 		match.feedback = FeedbackNone
 		match.phase = rallyPhase{token: token}
@@ -272,7 +285,6 @@ func advanceCountdown(
 		return match, scheduleTimer(token, TimerDelay)
 	}
 
-	countdown.remaining -= steps
 	match.phase = countdown
 
 	return match, scheduleTimer(countdown.token, TimerDelay)
@@ -290,10 +302,12 @@ func advanceRally(model *Model, match matchState, rally rallyPhase, elapsed Even
 	var steps Steps
 	match, steps = match.acceptedTime(elapsed.Elapsed)
 	for range steps {
+		match.moveComputer(match.computer.target())
 		match.ball = steppedBall(match.ball, match.paddles)
 		if scorer, scored := match.ball.scorer(); scored {
 			return scoredPoint(model, match, scorer)
 		}
+		match.observeComputer()
 	}
 
 	return match, scheduleTimer(rally.token, TimerDelay)
@@ -330,6 +344,7 @@ func scoredPoint(model *Model, match matchState, scorer Feedback) (matchState, E
 	match.serve = serve
 	match.ball = resetBall()
 	match.elapsed = 0
+	match.computer.endApproach()
 	if winner, won := match.winner(); won {
 		match.feedback = FeedbackNone
 		match.phase = gameOverPhase{winner: winner, focus: GameOverRowRematch}

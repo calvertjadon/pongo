@@ -139,7 +139,7 @@ func TestSetupPrimaryAdvancesToNextAvailableRow(t *testing.T) {
 	}
 }
 
-func TestSetupStartMatchIgnoresEnterAndAdjustment(t *testing.T) {
+func TestSetupStartMatchIgnoresAdjustment(t *testing.T) {
 	t.Parallel()
 
 	up := core.EventNavigate{Direction: core.DirectionUp}
@@ -148,7 +148,6 @@ func TestSetupStartMatchIgnoresEnterAndAdjustment(t *testing.T) {
 		t.Fatalf("focus = %v, want start match", initial.SetupFocus())
 	}
 	assertNoOps(t, initial, []core.Event{
-		core.EventPrimary{},
 		core.EventAdjust{Direction: core.DirectionLeft},
 		core.EventAdjust{Direction: core.DirectionRight},
 	})

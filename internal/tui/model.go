@@ -12,6 +12,7 @@ type Model struct {
 	application core.Model
 	width       int
 	height      int
+	timer       timerChain
 }
 
 // NewModel returns a Bubble Tea model at Pongo's initial state.
@@ -35,14 +36,18 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return model, tea.Interrupt
 		}
 
-		event, recognized := semanticEvent(message)
+		event, recognized := model.semanticEvent(message)
 		if !recognized {
 			return model, nil
 		}
 
-		var effect core.Effect
-		model.application, effect = core.Update(model.application, event)
-		return model, command(effect)
+		return model.deliver(event)
+	case TimerMsg:
+		if !model.timer.matches(message) {
+			return model, nil
+		}
+
+		return model.deliver(message.elapsed())
 	}
 
 	return model, nil
@@ -56,7 +61,33 @@ func (model Model) View() tea.View {
 	}
 }
 
-func semanticEvent(message tea.KeyPressMsg) (core.Event, bool) {
+// deliver passes one semantic event to the core and performs the effect it requests.
+func (model Model) deliver(event core.Event) (tea.Model, tea.Cmd) {
+	var effect core.Effect
+	model.application, effect = core.Update(model.application, event)
+
+	return model.perform(effect)
+}
+
+// perform maps one core effect to the host work that carries it out.
+func (model Model) perform(effect core.Effect) (tea.Model, tea.Cmd) {
+	switch effect.Kind() {
+	case core.EffectNone:
+		return model, nil
+	case core.EffectQuit:
+		return model, tea.Quit
+	case core.EffectScheduleTimer:
+		model.timer = model.timer.requested(effect.Timer())
+
+		return model, model.timer.tick()
+	default:
+		return model, nil
+	}
+}
+
+// semanticEvent translates one key press into the semantic event it carries. Keys with no meaning in the active state
+// are dropped.
+func (model Model) semanticEvent(message tea.KeyPressMsg) (core.Event, bool) {
 	switch message.String() {
 	case "q", "Q":
 		return core.EventQuit{}, true
@@ -64,10 +95,14 @@ func semanticEvent(message tea.KeyPressMsg) (core.Event, bool) {
 		return core.EventPrimary{}, true
 	case "esc":
 		return core.EventBack{}, true
+	case "w", "W":
+		return paddleStep(model, core.DirectionUp, core.BindingWS)
+	case "s", "S":
+		return paddleStep(model, core.DirectionDown, core.BindingWS)
 	case "up":
-		return core.EventNavigate{Direction: core.DirectionUp}, true
+		return verticalKey(model, core.DirectionUp)
 	case "down":
-		return core.EventNavigate{Direction: core.DirectionDown}, true
+		return verticalKey(model, core.DirectionDown)
 	case "left":
 		return core.EventAdjust{Direction: core.DirectionLeft}, true
 	case "right":
@@ -77,13 +112,34 @@ func semanticEvent(message tea.KeyPressMsg) (core.Event, bool) {
 	}
 }
 
-func command(effect core.Effect) tea.Cmd {
-	switch effect.Kind() {
-	case core.EffectQuit:
-		return tea.Quit
-	case core.EffectNone:
-		return nil
+// verticalKey translates an arrow key: a paddle step while a match is in play, otherwise menu navigation.
+func verticalKey(model Model, direction core.VerticalDirection) (core.Event, bool) {
+	if model.paddling() {
+		return core.EventPaddleStep{Direction: direction, Group: core.BindingArrows}, true
+	}
+
+	return core.EventNavigate{Direction: direction}, true
+}
+
+// paddleStep translates W or S, which move a paddle only while a match is in play.
+func paddleStep(model Model, direction core.VerticalDirection, group core.BindingGroup) (core.Event, bool) {
+	if !model.paddling() {
+		return nil, false
+	}
+
+	return core.EventPaddleStep{Direction: direction, Group: group}, true
+}
+
+// paddling reports whether the core is in a match phase where keys move paddles.
+func (model Model) paddling() bool {
+	if model.application.Screen() != core.ScreenMatch {
+		return false
+	}
+
+	switch model.application.MatchPhase() {
+	case core.MatchPhaseCountdown, core.MatchPhaseRally:
+		return true
 	default:
-		return nil
+		return false
 	}
 }

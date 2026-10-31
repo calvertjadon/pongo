@@ -100,3 +100,28 @@ func sized(model tui.Model) tea.Model {
 
 	return resized
 }
+
+func TestMatchIgnoresQuitBackAndKeyReleaseMessages(t *testing.T) {
+	t.Parallel()
+
+	model, _ := startMatchInShell(t)
+	messages := []tea.Msg{
+		tea.KeyPressMsg{Code: 'q', Text: "q"},
+		tea.KeyPressMsg{Code: 'Q', Text: "Q", Mod: tea.ModShift},
+		tea.KeyPressMsg{Code: tea.KeyEscape},
+		tea.KeyReleaseMsg{Code: 'w', Text: "w"},
+		tea.KeyReleaseMsg{Code: 's', Text: "s"},
+		tea.KeyReleaseMsg{Code: tea.KeyUp},
+		tea.KeyReleaseMsg{Code: tea.KeyDown},
+	}
+	for _, message := range messages {
+		updated, cmd := model.Update(message)
+
+		if cmd != nil {
+			t.Errorf("message %#v produced a command, want none", message)
+		}
+		if updated.View().Content != model.View().Content {
+			t.Errorf("message %#v changed the match view", message)
+		}
+	}
+}

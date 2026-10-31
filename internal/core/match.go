@@ -50,6 +50,8 @@ const (
 	MatchPhaseCountdown MatchPhase = iota
 	// MatchPhaseRally is a rally in play.
 	MatchPhaseRally
+	// MatchPhaseGameOver is a finished match waiting for the player's choice.
+	MatchPhaseGameOver
 )
 
 // matchPhase is the tagged phase of a match.
@@ -139,11 +141,18 @@ type matchState struct {
 
 // startMatch locks the draft, begins a new rematch chain, initializes match data, and enters the opening countdown.
 func startMatch(model Model) (Model, Effect) {
-	token := model.issueToken()
 	model.chain = chain{position: 0, opening: DirectionRight, vertical: DirectionUp}
+
+	return beginMatch(model, model.draft)
+}
+
+// beginMatch initializes match data with the given locked settings, serves the chain's opening directions, and enters
+// the opening countdown.
+func beginMatch(model Model, settings Settings) (Model, Effect) {
+	token := model.issueToken()
 	serve := Serve{Horizontal: model.chain.opening, Vertical: model.chain.vertical}
 	model.state = matchState{
-		settings: model.draft,
+		settings: settings,
 		paddles:  paddles{left: paddleStartTop, right: paddleStartTop},
 		ball:     resetBall(),
 		serve:    serve,
@@ -158,6 +167,10 @@ func startMatch(model Model) (Model, Effect) {
 }
 
 func updateMatch(model Model, match matchState, event Event) (Model, Effect) {
+	if over, finished := match.phase.(gameOverPhase); finished {
+		return updateGameOver(model, match, over, event)
+	}
+
 	switch event := event.(type) {
 	case EventPaddleStep:
 		match.paddles = moved(match.paddles, match.settings.Mode, event)
@@ -180,6 +193,8 @@ func advanceMatch(model Model, match matchState, elapsed EventElapsed) (Model, E
 		match, effect = advanceCountdown(&model, match, phase, elapsed)
 	case rallyPhase:
 		match, effect = advanceRally(&model, match, phase, elapsed)
+	case gameOverPhase:
+		return model, Effect{}
 	}
 	model.state = match
 
@@ -252,7 +267,8 @@ func (current ball) scorer() (Feedback, bool) {
 }
 
 // scoredPoint atomically records the point, resets the ball to the court center, keeps both paddles, alternates the
-// serve's vertical direction, sends the next serve toward whoever conceded, and enters the new start-serve countdown.
+// serve's vertical direction, and sends the next serve toward whoever conceded. A winning point instead enters Game
+// over and requests no timer; any other point enters the new start-serve countdown.
 func scoredPoint(model *Model, match matchState, scorer Feedback) (matchState, Effect) {
 	serve := Serve{Horizontal: DirectionLeft, Vertical: model.chain.vertical.opposite()}
 	switch scorer {
@@ -265,11 +281,18 @@ func scoredPoint(model *Model, match matchState, scorer Feedback) (matchState, E
 	}
 
 	model.chain.vertical = serve.Vertical
-	token := model.issueToken()
 	match.serve = serve
-	match.feedback = scorer
 	match.ball = resetBall()
 	match.elapsed = 0
+	if winner, won := match.winner(); won {
+		match.feedback = FeedbackNone
+		match.phase = gameOverPhase{winner: winner, focus: GameOverRowRematch}
+
+		return match, Effect{}
+	}
+
+	token := model.issueToken()
+	match.feedback = scorer
 	match.phase = countdownPhase{
 		remaining:    CountdownSteps,
 		token:        token,

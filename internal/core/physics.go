@@ -61,6 +61,18 @@ func (direction VerticalDirection) opposite() VerticalDirection {
 	return direction
 }
 
+// opposite returns the other horizontal direction.
+func (direction HorizontalDirection) opposite() HorizontalDirection {
+	switch direction {
+	case DirectionLeft:
+		return DirectionRight
+	case DirectionRight:
+		return DirectionLeft
+	}
+
+	return direction
+}
+
 // contactKind tags what the ball meets on its path.
 type contactKind uint8
 

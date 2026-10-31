@@ -213,29 +213,6 @@ func assertScoredPoint(
 	}
 }
 
-func TestScoresKeepCountingPastTheWinningScore(t *testing.T) {
-	t.Parallel()
-
-	setupModel := setupFor(t, core.ModeLocalTwoPlayer, core.WinningScore5, core.DifficultyNormal)
-	started, schedule := core.Update(setupModel, core.EventPrimary{})
-	model, token := beginServingRally(t, started, schedule.Timer().Token)
-
-	// The right paddle stays centered while both serve paths miss it, so the left player keeps scoring past the
-	// five-point winning score. Victory arrives in a later ticket.
-	for point := uint8(1); point <= 6; point++ {
-		scored, effect := runUntilPoint(t, model, token, [2]uint8{point, 0})
-		if left, _ := scored.Score(); left != point {
-			t.Fatalf("score after point %d = %d, want the left player's %d", point, left, point)
-		}
-		if scored.Screen() != core.ScreenMatch {
-			t.Fatalf("screen after point %d = %v, want the match to continue", point, scored.Screen())
-		}
-		if point < 6 {
-			model, token = beginServingRally(t, scored, effect.Timer().Token)
-		}
-	}
-}
-
 func TestNextServeAlternatesVerticalAndFacesTheConceder(t *testing.T) {
 	t.Parallel()
 

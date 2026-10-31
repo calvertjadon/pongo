@@ -83,7 +83,7 @@ jobs:
             GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 go build -trimpath -o "$stage/pongo" .
             # Fail here, not on a distant runner, if the tagged source did not embed the exact version.
             go version -m "$stage/pongo" |
-              grep -Eq "^mod[[:space:]]+github.com/calvertjadon/pongo[[:space:]]+$VERSION([[:space:]]|$)"
+              grep -Eq "^[[:space:]]*mod[[:space:]]+github.com/calvertjadon/pongo[[:space:]]+$VERSION([[:space:]]|$)"
             cp LICENSE "$stage/LICENSE"
             tar -C "$stage" -czf "$release/pongo_${VERSION}_${goos}_${goarch}.tar.gz" pongo LICENSE
           done

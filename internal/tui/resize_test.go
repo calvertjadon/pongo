@@ -135,6 +135,25 @@ func TestRecoveredMatchContinuesWithoutCatchUp(t *testing.T) {
 	}
 }
 
+func TestForeignTokenDoesNotEndTheLiveSequence(t *testing.T) {
+	t.Parallel()
+
+	model, _ := startMatchInShell(t)
+	clock := time.Unix(1_700_000_000, 0)
+	foreign, cmd := model.Update(tui.TimerMsg{Token: 99, Issue: 1, Scheduled: clock, Fired: clock.Add(tickPeriod)})
+	if cmd != nil {
+		t.Fatal("a foreign token requested the next timer")
+	}
+
+	updated, cmd := foreign.Update(timerMessage(1, clock))
+	if cmd == nil {
+		t.Fatal("the genuine completion after a foreign token requested no next timer")
+	}
+	if completed(updated) {
+		t.Fatal("one completion after a foreign token ended the countdown")
+	}
+}
+
 func TestUndersizedTerminalKeepsTheHostExitKeys(t *testing.T) {
 	t.Parallel()
 

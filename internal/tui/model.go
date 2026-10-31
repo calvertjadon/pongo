@@ -104,6 +104,8 @@ func (model Model) semanticEvent(message tea.KeyPressMsg) (core.Event, bool) {
 		return core.EventPrimary{}, true
 	case "esc":
 		return core.EventBack{}, true
+	case "p", "P":
+		return model.pauseToggle()
 	case "w", "W":
 		return paddleStep(model, core.DirectionUp, core.BindingWS)
 	case "s", "S":
@@ -119,6 +121,18 @@ func (model Model) semanticEvent(message tea.KeyPressMsg) (core.Event, bool) {
 	default:
 		return nil, false
 	}
+}
+
+// pauseToggle translates P, which freezes a match in play and resumes a paused one.
+func (model Model) pauseToggle() (core.Event, bool) {
+	if model.application.Screen() != core.ScreenMatch {
+		return nil, false
+	}
+	if model.paddling() || model.application.MatchPhase() == core.MatchPhasePaused {
+		return core.EventPauseToggle{}, true
+	}
+
+	return nil, false
 }
 
 // verticalKey translates an arrow key: a paddle step while a match is in play, otherwise menu navigation.
@@ -148,6 +162,8 @@ func (model Model) paddling() bool {
 	switch model.application.MatchPhase() {
 	case core.MatchPhaseCountdown, core.MatchPhaseRally:
 		return true
+	case core.MatchPhasePaused:
+		return false
 	default:
 		return false
 	}

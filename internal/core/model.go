@@ -60,6 +60,9 @@ type EventAdjust struct {
 // EventBack leaves the active screen for the one before it.
 type EventBack struct{}
 
+// EventPauseToggle freezes a match in play behind the pause menu or resumes a paused one.
+type EventPauseToggle struct{}
+
 // BindingGroup identifies the keys that produced a paddle step: W/S or the arrow keys. In Local two-player each group
 // drives one paddle; in Single player both drive the human's left paddle.
 type BindingGroup uint8
@@ -83,13 +86,14 @@ type EventElapsed struct {
 	Token   TimerToken
 }
 
-func (EventPrimary) isEvent()    {}
-func (EventQuit) isEvent()       {}
-func (EventNavigate) isEvent()   {}
-func (EventAdjust) isEvent()     {}
-func (EventBack) isEvent()       {}
-func (EventPaddleStep) isEvent() {}
-func (EventElapsed) isEvent()    {}
+func (EventPrimary) isEvent()     {}
+func (EventQuit) isEvent()        {}
+func (EventNavigate) isEvent()    {}
+func (EventAdjust) isEvent()      {}
+func (EventBack) isEvent()        {}
+func (EventPauseToggle) isEvent() {}
+func (EventPaddleStep) isEvent()  {}
+func (EventElapsed) isEvent()     {}
 
 // EffectKind identifies which variant of host work an Effect requests.
 type EffectKind uint8
@@ -213,7 +217,7 @@ func updateTitle(model Model, event Event) (Model, Effect) {
 	case EventPrimary:
 		model.state = setupState{focus: SetupRowMode}
 		return model, Effect{}
-	case EventNavigate, EventAdjust, EventBack, EventPaddleStep, EventElapsed:
+	case EventNavigate, EventAdjust, EventBack, EventPauseToggle, EventPaddleStep, EventElapsed:
 		return model, Effect{}
 	}
 

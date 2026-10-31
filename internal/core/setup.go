@@ -32,7 +32,7 @@ func updateSetup(model Model, setup setupState, event Event) (Model, Effect) {
 	case EventBack:
 		model.state = titleState{}
 		return model, Effect{}
-	case EventQuit, EventPaddleStep, EventElapsed:
+	case EventQuit, EventPauseToggle, EventPaddleStep, EventElapsed:
 		return model, Effect{}
 	}
 

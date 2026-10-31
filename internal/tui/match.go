@@ -9,11 +9,12 @@ import (
 )
 
 // Frame rows and columns of the fixed 80 by 28 match layout. The row between the court and the controls is reserved
-// for scorer feedback, which a later ticket fills.
+// for scorer feedback.
 const (
 	scoreRow    = 1
 	contextRow  = 2
 	courtRow    = 3
+	feedbackRow = courtRow + core.CourtHeight + 2
 	controlsRow = courtRow + core.CourtHeight + 3
 	courtColumn = 4
 )
@@ -32,6 +33,7 @@ func renderMatch(application core.Model) string {
 	drawCourt(rows)
 	drawPaddles(rows, application)
 	drawPlay(rows, application)
+	writeCentered(rows[feedbackRow], feedbackLine(application))
 	writeCentered(rows[controlsRow], controlsLine(settings.Mode))
 
 	return joinRows(rows)
@@ -96,6 +98,35 @@ func scoreLine(application core.Model) string {
 // contextLine states what the match is played to and who plays it.
 func contextLine(settings core.Settings) string {
 	return fmt.Sprintf("First to %d | %s", settings.WinningScore, modeName(settings.Mode))
+}
+
+// feedbackLine names the player who scored the last point and where the next serve goes. It is empty when the rally
+// that follows has already cleared the feedback.
+func feedbackLine(application core.Model) string {
+	scorer := application.Feedback()
+	if scorer == core.FeedbackNone {
+		return ""
+	}
+
+	settings := application.MatchSettings()
+
+	return fmt.Sprintf(
+		"%s scores  |  Serve to %s",
+		playerName(settings, scorer == core.FeedbackLeftScored),
+		playerName(settings, application.NextServe().Horizontal == core.DirectionLeft),
+	)
+}
+
+// playerName names the left player or, on the right, the second local player or the computer.
+func playerName(settings core.Settings, left bool) string {
+	if left {
+		return "PLAYER 1"
+	}
+	if settings.Mode == core.ModeLocalTwoPlayer {
+		return "PLAYER 2"
+	}
+
+	return "CPU"
 }
 
 // controlsLine lists the movement keys that apply in the current mode.

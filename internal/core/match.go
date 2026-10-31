@@ -76,8 +76,23 @@ type countdownPhase struct {
 	continuation serveContinuation
 }
 
-// rallyPhase is a rally in play. Ball motion arrives in a later ticket.
-type rallyPhase struct{}
+// rallyPhase is a rally in play. It owns the correlation token of its timing sequence.
+type rallyPhase struct {
+	token TimerToken
+}
+
+// Feedback identifies the scorer feedback shown during the countdown that follows a point. It clears when the rally
+// begins.
+type Feedback uint8
+
+const (
+	// FeedbackNone means no point has been scored since the last serve.
+	FeedbackNone Feedback = iota
+	// FeedbackLeftScored reports that the left player scored the point that ended the last rally.
+	FeedbackLeftScored
+	// FeedbackRightScored reports that the right player scored the point that ended the last rally.
+	FeedbackRightScored
+)
 
 func (countdownPhase) isMatchPhase() {}
 
@@ -99,10 +114,15 @@ type paddles struct {
 	right uint8
 }
 
-// ball is the ball's position in court cells. It is a fractional point: the renderer rounds it, the match does not.
+// ball is the ball's position in court cells and its velocity in cells per second. Position is a fractional point:
+// the renderer rounds it, the match does not. Speed is the visual speed a paddle hit raises; the velocity carries the
+// cell aspect correction.
 type ball struct {
-	x float64
-	y float64
+	x     float64
+	y     float64
+	vx    float64
+	vy    float64
+	speed float64
 }
 
 // matchState is one match in progress. It owns the settings it locked and everything it accumulates.
@@ -111,6 +131,8 @@ type matchState struct {
 	score    score
 	paddles  paddles
 	ball     ball
+	serve    Serve
+	feedback Feedback
 	elapsed  Duration
 	phase    matchPhase
 }
@@ -119,10 +141,12 @@ type matchState struct {
 func startMatch(model Model) (Model, Effect) {
 	token := model.issueToken()
 	model.chain = chain{position: 0, opening: DirectionRight, vertical: DirectionUp}
+	serve := Serve{Horizontal: model.chain.opening, Vertical: model.chain.vertical}
 	model.state = matchState{
 		settings: model.draft,
 		paddles:  paddles{left: paddleStartTop, right: paddleStartTop},
-		ball:     ball{x: ballStartX, y: ballStartY},
+		ball:     resetBall(),
+		serve:    serve,
 		phase: countdownPhase{
 			remaining:    CountdownSteps,
 			token:        token,
@@ -153,9 +177,9 @@ func advanceMatch(model Model, match matchState, elapsed EventElapsed) (Model, E
 	var effect Effect
 	switch phase := match.phase.(type) {
 	case countdownPhase:
-		match, effect = advanceCountdown(match, phase, elapsed)
+		match, effect = advanceCountdown(&model, match, phase, elapsed)
 	case rallyPhase:
-		// A rally has no motion yet, so elapsed time changes nothing until ball motion arrives.
+		match, effect = advanceRally(&model, match, phase, elapsed)
 	}
 	model.state = match
 
@@ -163,8 +187,14 @@ func advanceMatch(model Model, match matchState, elapsed EventElapsed) (Model, E
 }
 
 // advanceCountdown spends elapsed time on the countdown, which requests its next timer while steps remain and enters
-// the rally when they run out. A completion from another timing sequence is a strict no-op.
-func advanceCountdown(match matchState, countdown countdownPhase, elapsed EventElapsed) (matchState, Effect) {
+// the rally when they run out. The rally starts with its own timing sequence, launches the pending serve, and clears
+// the scorer feedback. A completion from another timing sequence is a strict no-op.
+func advanceCountdown(
+	model *Model,
+	match matchState,
+	countdown countdownPhase,
+	elapsed EventElapsed,
+) (matchState, Effect) {
 	if elapsed.Token != countdown.token {
 		return match, Effect{}
 	}
@@ -172,16 +202,81 @@ func advanceCountdown(match matchState, countdown countdownPhase, elapsed EventE
 	var steps Steps
 	match, steps = match.acceptedTime(elapsed.Elapsed)
 	if steps >= countdown.remaining {
+		token := model.issueToken()
 		match.elapsed = 0
-		match.phase = rallyPhase{}
+		match.ball = servedBall(match.serve)
+		match.feedback = FeedbackNone
+		match.phase = rallyPhase{token: token}
 
-		return match, Effect{}
+		return match, scheduleTimer(token, TimerDelay)
 	}
 
 	countdown.remaining -= steps
 	match.phase = countdown
 
 	return match, scheduleTimer(countdown.token, TimerDelay)
+}
+
+// advanceRally spends elapsed time on the rally's fixed steps. Each step moves the ball and resolves its contacts;
+// the moment the ball crosses a scoring boundary the point is awarded and the match moves to the next serve's
+// countdown. The rest of that event's movement is discarded. A completion from another timing sequence is a strict
+// no-op.
+func advanceRally(model *Model, match matchState, rally rallyPhase, elapsed EventElapsed) (matchState, Effect) {
+	if elapsed.Token != rally.token {
+		return match, Effect{}
+	}
+
+	var steps Steps
+	match, steps = match.acceptedTime(elapsed.Elapsed)
+	for range steps {
+		match.ball = steppedBall(match.ball, match.paddles)
+		if scorer, scored := match.ball.scorer(); scored {
+			return scoredPoint(model, match, scorer)
+		}
+	}
+
+	return match, scheduleTimer(rally.token, TimerDelay)
+}
+
+// scorer reports which player won the point when the ball has crossed a scoring boundary: the ball leaving the right
+// edge concedes to the left player, and leaving the left edge concedes to the right player.
+func (current ball) scorer() (Feedback, bool) {
+	switch {
+	case current.x > CourtWidth-1:
+		return FeedbackLeftScored, true
+	case current.x < 0:
+		return FeedbackRightScored, true
+	}
+
+	return FeedbackNone, false
+}
+
+// scoredPoint atomically records the point, resets the ball to the court center, keeps both paddles, alternates the
+// serve's vertical direction, sends the next serve toward whoever conceded, and enters the new start-serve countdown.
+func scoredPoint(model *Model, match matchState, scorer Feedback) (matchState, Effect) {
+	serve := Serve{Horizontal: DirectionLeft, Vertical: model.chain.vertical.opposite()}
+	switch scorer {
+	case FeedbackLeftScored:
+		match.score.left++
+		serve.Horizontal = DirectionRight
+	case FeedbackRightScored:
+		match.score.right++
+	case FeedbackNone:
+	}
+
+	model.chain.vertical = serve.Vertical
+	token := model.issueToken()
+	match.serve = serve
+	match.feedback = scorer
+	match.ball = resetBall()
+	match.elapsed = 0
+	match.phase = countdownPhase{
+		remaining:    CountdownSteps,
+		token:        token,
+		continuation: continuationStartServe,
+	}
+
+	return match, scheduleTimer(token, TimerDelay)
 }
 
 // moved applies one paddle step to the paddle its binding group controls. In Local two-player each group drives one
@@ -259,6 +354,16 @@ func (model Model) BallPosition() (x, y float64) {
 	return 0, 0
 }
 
+// BallVelocity returns the ball's court velocity in cells per second. The pair carries the cell aspect correction, so
+// the visual speed is the length of (vx, 2*vy). It is meaningful only while Screen is ScreenMatch.
+func (model Model) BallVelocity() (vx, vy float64) {
+	if match, ok := model.state.(matchState); ok {
+		return match.ball.vx, match.ball.vy
+	}
+
+	return 0, 0
+}
+
 // CountdownRemaining returns the fixed steps left in the active countdown, at most CountdownSteps. It is meaningful
 // only while MatchPhase is MatchPhaseCountdown.
 func (model Model) CountdownRemaining() Steps {
@@ -271,7 +376,22 @@ func (model Model) CountdownRemaining() Steps {
 	return 0
 }
 
-// NextServe returns the directions the next serve will travel in. It is meaningful only while Screen is ScreenMatch.
+// NextServe returns the directions the next serve will travel in: the serve the pending countdown will launch, or the
+// serve that is in flight during a rally. It is meaningful only while Screen is ScreenMatch.
 func (model Model) NextServe() Serve {
+	if match, ok := model.state.(matchState); ok {
+		return match.serve
+	}
+
 	return Serve{Horizontal: model.chain.opening, Vertical: model.chain.vertical}
+}
+
+// Feedback returns the scorer feedback the countdown after a point shows. It is FeedbackNone once the rally begins.
+// It is meaningful only while Screen is ScreenMatch.
+func (model Model) Feedback() Feedback {
+	if match, ok := model.state.(matchState); ok {
+		return match.feedback
+	}
+
+	return FeedbackNone
 }

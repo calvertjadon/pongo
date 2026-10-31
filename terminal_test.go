@@ -47,9 +47,7 @@ func TestGameRefusesToStartWithoutTerminal(t *testing.T) {
 		command.Stderr = &stderr
 
 		assertStartupRejected(t, command, &stderr)
-		if after := terminal.state(t); after != before {
-			t.Fatalf("terminal state changed:\nbefore:\n%s\nafter:\n%s", before, after)
-		}
+		assertTerminalRestored(t, terminal, before, "a rejected startup")
 	})
 	t.Run("input not a terminal", func(t *testing.T) {
 		t.Parallel()
@@ -111,8 +109,16 @@ func assertSessionExit(t *testing.T, executable string, exit sessionExit) {
 	if status := waitForExit(t, command); status != exit.status {
 		t.Fatalf("pongo exited %d after %s, want %d", status, exit.name, exit.status)
 	}
-	if after := terminal.state(t); after != before {
-		t.Fatalf("terminal not restored after %s:\nbefore:\n%s\nafter:\n%s", exit.name, before, after)
+	assertTerminalRestored(t, terminal, before, exit.name)
+}
+
+// assertTerminalRestored requires the terminal's settings to match the state recorded before the program ran.
+func assertTerminalRestored(t *testing.T, terminal *pseudoTerminal, before, event string) {
+	t.Helper()
+
+	after := terminal.state(t)
+	if normalizeState(after) != normalizeState(before) {
+		t.Fatalf("terminal not restored after %s:\nbefore:\n%s\nafter:\n%s", event, before, after)
 	}
 }
 

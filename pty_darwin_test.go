@@ -4,9 +4,16 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"strings"
 	"syscall"
 	"unsafe"
 )
+
+// normalizeState hides the PENDIN flag, which the macOS terminal driver sets on its own when input is pending and
+// canonical mode resumes. It is not a mode a program sets or restores.
+func normalizeState(state string) string {
+	return strings.ReplaceAll(state, " pendin", " -pendin")
+}
 
 // openPseudoTerminal returns the controller side of a new pseudo-terminal and its unlocked terminal side.
 func openPseudoTerminal() (*os.File, *os.File, error) {

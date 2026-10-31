@@ -114,8 +114,8 @@ func servedBall(serve Serve) ball {
 	return ball{
 		x:     ballStartX,
 		y:     ballStartY,
-		vx:    serve.Horizontal.sign() * serveSpeed * math.Cos(serveAngle),
-		vy:    serve.Vertical.sign() * serveSpeed * math.Sin(serveAngle) / 2,
+		vx:    float64(serve.Horizontal.sign() * serveSpeed * cosAngle(serveAngle)),
+		vy:    float64(serve.Vertical.sign()*serveSpeed*sinAngle(serveAngle)) / 2,
 		speed: serveSpeed,
 	}
 }
@@ -206,11 +206,12 @@ func reachable(time, remaining float64) bool {
 	return time >= -contactEpsilon && time <= remaining+contactEpsilon
 }
 
-// hitsPaddle reports whether the ball's path crosses a paddle plane inside that paddle's hittable span.
+// hitsPaddle reports whether the ball's path crosses a paddle plane inside that paddle's hittable span: the four rows
+// its top starts, [top, top+3], whose center is top+1.5 and whose ends map to the steepest rebound.
 func hitsPaddle(current ball, time float64, top uint8) bool {
-	y := current.y + current.vy*max(0, time)
+	y := current.y + float64(current.vy*max(0, time))
 	low := float64(top) - contactEpsilon
-	high := float64(top) + PaddleHeight + contactEpsilon
+	high := float64(top+paddleLastOffset) + contactEpsilon
 
 	return y >= low && y <= high
 }
@@ -222,8 +223,8 @@ func sameInstant(one, other contact) bool {
 
 // advanced moves the ball along its velocity for time.
 func advanced(current ball, time float64) ball {
-	current.x += current.vx * time
-	current.y += current.vy * time
+	current.x += float64(current.vx * time)
+	current.y += float64(current.vy * time)
 
 	return current
 }
@@ -241,10 +242,10 @@ func rebounded(current ball, met contact) ball {
 	impact := (current.y - paddleCenter(met.top)) / paddleHalfSpan
 	impact = min(max(impact, -1), 1)
 	speed := min(current.speed+hitSpeedGain, maxSpeed)
-	angle := impact * maxReboundAngle
+	angle := float64(impact * maxReboundAngle)
 
-	current.vx = paddleAway(met.kind) * speed * math.Cos(angle)
-	current.vy = speed * math.Sin(angle) / 2
+	current.vx = float64(paddleAway(met.kind) * speed * cosAngle(angle))
+	current.vy = float64(speed*sinAngle(angle)) / 2
 	current.speed = speed
 	if met.wallPaddle {
 		current.vy = -current.vy

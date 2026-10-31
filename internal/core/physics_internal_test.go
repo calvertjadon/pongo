@@ -84,3 +84,45 @@ func TestSteppedBallStopsAfterFourContacts(t *testing.T) {
 		t.Errorf("ball vy after the fourth contact = %v, want the top wall's reflection", got.vy)
 	}
 }
+
+func TestPaddleSpanCoversExactlyTheFourRowsItsTopStarts(t *testing.T) {
+	t.Parallel()
+
+	const top = uint8(8)
+	tests := []struct {
+		name      string
+		row       float64
+		wantHit   bool
+		wantAngle float64
+	}{
+		{name: "just above the top row misses", row: float64(top) - 0.01},
+		{name: "top row hits at the steepest angle", row: float64(top), wantHit: true, wantAngle: -65},
+		{name: "bottom row hits at the steepest angle", row: float64(top + 3), wantHit: true, wantAngle: 65},
+		{name: "just below the bottom row misses", row: float64(top+3) + 0.01},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			// The ball sits just right of the left paddle plane and travels straight left for 5 ms, so it reaches the
+			// plane at exactly the test row.
+			current := ball{x: PaddleLeftColumn + 0.05, y: test.row, vx: -10, speed: serveSpeed}
+			got := steppedBall(current, paddles{left: top, right: paddleStartTop})
+			if !test.wantHit {
+				if got.speed != serveSpeed || got.vx != -10 || got.y != test.row {
+					t.Errorf("ball at row %v was returned: speed %v, vx %v, y %v",
+						test.row, got.speed, got.vx, got.y)
+				}
+
+				return
+			}
+			if got.speed != serveSpeed+hitSpeedGain {
+				t.Errorf("speed after the hit at row %v = %v, want one hit's increment", test.row, got.speed)
+			}
+			angle := math.Atan2(2*got.vy, got.vx) * 180 / math.Pi
+			if math.Abs(angle-test.wantAngle) > 1e-9 {
+				t.Errorf("rebound angle at row %v = %v degrees, want %v", test.row, angle, test.wantAngle)
+			}
+		})
+	}
+}

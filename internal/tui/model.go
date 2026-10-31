@@ -29,11 +29,13 @@ func (Model) Init() tea.Cmd {
 func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch message := message.(type) {
 	case tea.WindowSizeMsg:
-		model.width = message.Width
-		model.height = message.Height
+		return model.resized(message.Width, message.Height)
 	case tea.KeyPressMsg:
 		if message.String() == "ctrl+c" {
 			return model, tea.Interrupt
+		}
+		if model.undersized() {
+			return model, gatedKey(message)
 		}
 
 		event, recognized := model.semanticEvent(message)
@@ -41,13 +43,20 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return model, nil
 		}
 
-		return model.deliver(event)
+		delivered, effect := model.deliver(event)
+
+		return delivered.perform(effect)
 	case TimerMsg:
-		if !model.timer.matches(message) {
+		if model.undersized() || !model.timer.matches(message) {
 			return model, nil
 		}
 
-		return model.deliver(message.elapsed())
+		delivered, effect := model.deliver(message.elapsed())
+		if effect.Kind() != core.EffectScheduleTimer {
+			delivered.timer = delivered.timer.stopped()
+		}
+
+		return delivered.perform(effect)
 	}
 
 	return model, nil
@@ -61,12 +70,12 @@ func (model Model) View() tea.View {
 	}
 }
 
-// deliver passes one semantic event to the core and performs the effect it requests.
-func (model Model) deliver(event core.Event) (tea.Model, tea.Cmd) {
+// deliver passes one semantic event to the core and returns the model with the effect it requests.
+func (model Model) deliver(event core.Event) (Model, core.Effect) {
 	var effect core.Effect
 	model.application, effect = core.Update(model.application, event)
 
-	return model.perform(effect)
+	return model, effect
 }
 
 // perform maps one core effect to the host work that carries it out.

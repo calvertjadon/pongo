@@ -92,13 +92,16 @@ func drawPlay(rows [][]rune, application core.Model) {
 
 // scoreLine names both players and their points.
 func scoreLine(application core.Model) string {
+	settings := application.MatchSettings()
 	left, right := application.Score()
-	rightName := "CPU"
-	if application.MatchSettings().Mode == core.ModeLocalTwoPlayer {
-		rightName = "PLAYER 2"
-	}
 
-	return fmt.Sprintf("PLAYER 1    %d     :     %d   %s", left, right, rightName)
+	return fmt.Sprintf(
+		"%s    %d     :     %d   %s",
+		playerName(settings, true),
+		left,
+		right,
+		playerName(settings, false),
+	)
 }
 
 // contextLine states what the match is played to and who plays it.

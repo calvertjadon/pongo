@@ -28,14 +28,15 @@ func drawGameOverOverlay(rows [][]rune, application core.Model) {
 	leftScore, rightScore := application.Score()
 	writeCenteredInBox(rows[top+4], left, fmt.Sprintf("%d  -  %d", leftScore, rightScore))
 
-	focus := application.GameOverFocus()
-	for row := core.GameOverRow(0); row <= core.GameOverRowReturnToTitle; row++ {
-		marker := "  "
-		if row == focus {
-			marker = "> "
-		}
-		writeText(rows[top+6+gameOverRowGap*int(row)], left+gameOverMenuColumn, marker+gameOverRowLabel(row))
-	}
+	drawMenu(
+		rows,
+		top+6,
+		left+gameOverMenuColumn,
+		gameOverRowGap,
+		int(core.GameOverRowReturnToTitle)+1,
+		application.GameOverFocus(),
+		gameOverRowLabel,
+	)
 }
 
 // writeCenteredInBox writes text into the middle of one box row, clipping at the box edges.

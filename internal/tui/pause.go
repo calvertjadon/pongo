@@ -18,14 +18,32 @@ func drawPauseOverlay(rows [][]rune, application core.Model) {
 	drawBox(rows, top, left, pauseBoxWidth, pauseBoxHeight, " PAUSED ")
 
 	focus := application.PauseFocus()
-	for row := core.PauseRow(0); row <= core.PauseRowReturnToTitle; row++ {
+	drawMenu(
+		rows,
+		top+2,
+		left+8,
+		pauseRowGap,
+		int(core.PauseRowReturnToTitle)+1,
+		focus,
+		pauseRowLabel,
+	)
+	writeText(rows[top+8], left+5, "Enter select | P resume")
+}
+
+// drawMenu writes each menu row's marker and label at a fixed column and row gap, marking the focused row.
+func drawMenu[T ~uint8](
+	rows [][]rune,
+	top, left, gap, count int,
+	focus T,
+	label func(T) string,
+) {
+	for row := range count {
 		marker := "  "
-		if row == focus {
+		if T(row) == focus {
 			marker = "> "
 		}
-		writeText(rows[top+2+pauseRowGap*int(row)], left+8, marker+pauseRowLabel(row))
+		writeText(rows[top+gap*row], left, marker+label(T(row)))
 	}
-	writeText(rows[top+8], left+5, "Enter select | P resume")
 }
 
 // drawBox draws a bordered box with title set into the top border.

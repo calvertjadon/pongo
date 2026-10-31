@@ -231,3 +231,33 @@ func TestPauseMenuEnterResumesTheFrozenMatch(t *testing.T) {
 		t.Errorf("resumed velocity = (%v, %v), want the frozen (%v, %v)", vx, vy, frozenVX, frozenVY)
 	}
 }
+
+func TestPauseDuringAResumeCountdownStillContinuesTheFrozenRally(t *testing.T) {
+	t.Parallel()
+
+	model, token := beginRally(t, core.ModeLocalTwoPlayer)
+	model = advanceRally(t, model, token, 15)
+	frozenX, frozenY := model.BallPosition()
+	frozenVX, frozenVY := model.BallVelocity()
+
+	paused, _ := core.Update(model, core.EventPauseToggle{})
+	first, firstEffect := core.Update(paused, core.EventPauseToggle{})
+	again, _ := core.Update(first, core.EventPauseToggle{})
+	resumed, effect := core.Update(again, core.EventPauseToggle{})
+	if remaining := resumed.CountdownRemaining(); remaining != core.CountdownSteps {
+		t.Fatalf("second resume countdown = %d steps, want a full %d", remaining, core.CountdownSteps)
+	}
+	if effect.Timer().Token == firstEffect.Timer().Token {
+		t.Error("second resume reused the first resume's timing generation")
+	}
+
+	rally, _ := beginServingRally(t, resumed, effect.Timer().Token)
+	x, y := rally.BallPosition()
+	if x != frozenX || y != frozenY {
+		t.Errorf("ball after the second resume = (%v, %v), want the frozen (%v, %v)", x, y, frozenX, frozenY)
+	}
+	vx, vy := rally.BallVelocity()
+	if vx != frozenVX || vy != frozenVY {
+		t.Errorf("velocity after the second resume = (%v, %v), want the frozen (%v, %v)", vx, vy, frozenVX, frozenVY)
+	}
+}

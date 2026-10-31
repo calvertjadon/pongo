@@ -1,0 +1,167 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Automated gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.27.0"
+          cache: true
+
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
+
+      - name: Run automated gate
+        run: |
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          golangci-lint fmt --diff --config=.golangci.yml
+          go mod tidy -diff
+          go vet ./...
+          golangci-lint run --config=.golangci.yml ./...
+          go test -race -cover ./...
+          go build ./...
+
+  build:
+    name: Build release archives
+    needs: gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v7
+        with:
+          # The tag must be in the checkout for the Go toolchain to embed it in the executable.
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.27.x"
+          check-latest: true
+          cache: true
+
+      - name: Require a semantic version tag
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::tag $VERSION is not a vMAJOR.MINOR.PATCH version"
+            exit 1
+          fi
+
+      - name: Build and package every target
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -eu
+          stage="$RUNNER_TEMP/stage"
+          release="$RUNNER_TEMP/release"
+          rm -rf "$stage" "$release"
+          mkdir -p "$release"
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            goos="${target%/*}"
+            goarch="${target#*/}"
+            rm -rf "$stage"
+            mkdir -p "$stage"
+            GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 go build -trimpath -o "$stage/pongo" .
+            # Fail here, not on a distant runner, if the tagged source did not embed the exact version.
+            go version -m "$stage/pongo" |
+              grep -Eq "^mod[[:space:]]+github.com/calvertjadon/pongo[[:space:]]+$VERSION([[:space:]]|$)"
+            cp LICENSE "$stage/LICENSE"
+            tar -C "$stage" -czf "$release/pongo_${VERSION}_${goos}_${goarch}.tar.gz" pongo LICENSE
+          done
+          cd "$release"
+          sha256sum pongo_*.tar.gz > SHA256SUMS
+          sha256sum --check --strict SHA256SUMS
+          test "$(wc -l < SHA256SUMS)" -eq 4
+
+      - name: Upload release archives
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-archives
+          path: ${{ runner.temp }}/release
+          if-no-files-found: error
+
+  verify:
+    name: Verify ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            runner: ubuntu-latest
+          - goos: linux
+            goarch: arm64
+            runner: ubuntu-24.04-arm
+          - goos: darwin
+            goarch: amd64
+            runner: macos-15-intel
+          - goos: darwin
+            goarch: arm64
+            runner: macos-latest
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.27.x"
+          check-latest: true
+          cache: true
+
+      - name: Download release archives
+        uses: actions/download-artifact@v8
+        with:
+          name: release-archives
+          path: ${{ runner.temp }}/release
+
+      - name: Verify the native release archive
+        env:
+          PONGO_RELEASE_ARCHIVE: >-
+            ${{ runner.temp }}/release/pongo_${{ github.ref_name }}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz
+          PONGO_RELEASE_SUMS: ${{ runner.temp }}/release/SHA256SUMS
+          PONGO_RELEASE_VERSION: ${{ github.ref_name }}
+        run: go test -run '^TestReleaseArchive$' -v .
+
+  release:
+    name: Publish GitHub Release
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download release archives
+        uses: actions/download-artifact@v8
+        with:
+          name: release-archives
+          path: release
+
+      - name: Publish the verified release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ github.ref_name }}
+        run: gh release create "$VERSION" --verify-tag --title "$VERSION" --generate-notes release/*

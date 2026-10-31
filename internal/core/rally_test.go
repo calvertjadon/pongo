@@ -235,6 +235,27 @@ func TestNextServeAlternatesVerticalAndFacesTheConceder(t *testing.T) {
 	}
 }
 
+func TestLaterServesLaunchTowardTheConceder(t *testing.T) {
+	t.Parallel()
+
+	model, token := beginRally(t, core.ModeLocalTwoPlayer)
+	model = setPaddleTop(t, model, true, 2)
+	scored, pointEffect := runUntilPoint(t, model, token, [2]uint8{0, 1})
+
+	served, _ := beginServingRally(t, scored, pointEffect.Timer().Token)
+	vx, vy := served.BallVelocity()
+	if vx >= 0 {
+		t.Errorf("serve vx after the right player scored = %v, want toward the left player", vx)
+	}
+	if vy <= 0 {
+		t.Errorf("serve vy after the point = %v, want the alternated downward serve", vy)
+	}
+	assertClose(t, "serve speed", math.Hypot(vx, 2*vy), 28)
+	if serve := served.NextServe(); serve != (core.Serve{Horizontal: core.DirectionLeft, Vertical: core.DirectionDown}) {
+		t.Errorf("serve after the right player scored = %+v, want left and down", serve)
+	}
+}
+
 func TestFeedbackClearsWhenTheNextRallyBegins(t *testing.T) {
 	t.Parallel()
 

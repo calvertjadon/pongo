@@ -278,6 +278,9 @@ func TestMatchDrawsTheBallInTheNearestCell(t *testing.T) {
 	if cell := frame[frameCourtRow+1+row][frameCourtLeft+1+column-1]; cell == 'o' {
 		t.Errorf("ball drawn one cell left of the nearest cell")
 	}
+	if cell := frame[frameCenterRow][frameCenterCol]; cell == 'o' {
+		t.Errorf("ball is still drawn at its previous cell")
+	}
 }
 
 func TestMatchCountdownDigitFallsAsTheCountdownRuns(t *testing.T) {

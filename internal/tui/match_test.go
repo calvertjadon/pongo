@@ -1,6 +1,7 @@
 package tui_test
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -15,6 +16,7 @@ const (
 	frameScoreRow   = 1
 	frameContextRow = 2
 	frameCourtRow   = 3
+	frameFeedback   = 25
 	frameControls   = 26
 	frameCourtLeft  = 4
 	frameCenterRow  = 14
@@ -128,6 +130,48 @@ func TestMatchControlsFollowTheMode(t *testing.T) {
 	}
 }
 
+// beginRally starts a match in mode, spends the opening countdown, and returns the rally with its timer token.
+func beginRally(t *testing.T, mode core.Mode) (core.Model, core.TimerToken) {
+	t.Helper()
+
+	model, schedule := startMatch(t, mode)
+	token := schedule.Timer().Token
+	for range 2*int(core.CountdownSteps) + 1 {
+		var effect core.Effect
+		model, effect = core.Update(model, core.EventElapsed{Elapsed: core.StepDuration, Token: token})
+		if model.MatchPhase() == core.MatchPhaseRally {
+			if effect.Kind() != core.EffectScheduleTimer {
+				t.Fatalf("rally launch requested %v, want a timer", effect.Kind())
+			}
+
+			return model, effect.Timer().Token
+		}
+	}
+	t.Fatal("countdown did not finish")
+
+	return model, 0
+}
+
+// scoreUntilCountdown drives the rally until a point is scored and returns the new countdown and its token.
+func scoreUntilCountdown(t *testing.T, model core.Model, token core.TimerToken) (core.Model, core.TimerToken) {
+	t.Helper()
+
+	for range 4000 {
+		var effect core.Effect
+		model, effect = core.Update(model, core.EventElapsed{Elapsed: core.StepDuration, Token: token})
+		if model.MatchPhase() == core.MatchPhaseCountdown {
+			if effect.Kind() != core.EffectScheduleTimer {
+				t.Fatalf("point requested %v, want a countdown timer", effect.Kind())
+			}
+
+			return model, effect.Timer().Token
+		}
+	}
+	t.Fatal("no point was scored")
+
+	return model, 0
+}
+
 // startMatch replays the setup keys for mode and returns the match with the timer its countdown requested.
 func startMatch(t *testing.T, mode core.Mode) (core.Model, core.Effect) {
 	t.Helper()
@@ -172,6 +216,68 @@ func finishCountdown(t *testing.T, model core.Model, token core.TimerToken) core
 	t.Fatalf("countdown did not finish")
 
 	return model
+}
+
+func TestMatchFeedbackShowsInTheReservedFooterWithoutMovingTheCourt(t *testing.T) {
+	t.Parallel()
+
+	rally, token := beginRally(t, core.ModeLocalTwoPlayer)
+	scored, _ := scoreUntilCountdown(t, rally, token)
+	rallyFrame := lines(tui.Render(rally, 80, 28))
+	scoredFrame := lines(tui.Render(scored, 80, 28))
+
+	feedback := scoredFrame[frameFeedback]
+	if !strings.Contains(feedback, "PLAYER 1 scores") {
+		t.Errorf("feedback row = %q, want the left player's point", feedback)
+	}
+	if !strings.Contains(feedback, "Serve to PLAYER 2") {
+		t.Errorf("feedback row = %q, want the next serve toward the conceding player", feedback)
+	}
+	if blank := strings.Repeat(" ", 80); rallyFrame[frameFeedback] != blank {
+		t.Errorf("feedback row during a rally = %q, want blank", rallyFrame[frameFeedback])
+	}
+	for _, row := range []int{frameContextRow, frameCourtRow, frameControls} {
+		if scoredFrame[row] != rallyFrame[row] {
+			t.Errorf("row %d changed after the point: %q, want %q", row, scoredFrame[row], rallyFrame[row])
+		}
+	}
+}
+
+func TestMatchFeedbackClearsWhenTheNextRallyBegins(t *testing.T) {
+	t.Parallel()
+
+	rally, token := beginRally(t, core.ModeLocalTwoPlayer)
+	scored, countdownToken := scoreUntilCountdown(t, rally, token)
+	served := finishCountdown(t, scored, countdownToken)
+
+	if row := lines(tui.Render(served, 80, 28))[frameFeedback]; row != strings.Repeat(" ", 80) {
+		t.Errorf("feedback row when the rally begins = %q, want blank", row)
+	}
+}
+
+func TestMatchDrawsTheBallInTheNearestCell(t *testing.T) {
+	t.Parallel()
+
+	rally, token := beginRally(t, core.ModeLocalTwoPlayer)
+	frame := lines(tui.Render(rally, 80, 28))
+	// The serve starts exactly at (34.5, 9.5); an exact half rounds to the higher cell.
+	if cell := frame[frameCenterRow][frameCenterCol]; cell != 'o' {
+		t.Fatalf("ball cell at the serve = %q, want o at the higher half cell", cell)
+	}
+
+	stepped, _ := core.Update(rally, core.EventElapsed{Elapsed: core.StepDuration, Token: token})
+	x, y := stepped.BallPosition()
+	if x == math.Trunc(x) || y == math.Trunc(y) {
+		t.Fatalf("physics position (%v, %v) rounded, want the unrounded point", x, y)
+	}
+	frame = lines(tui.Render(stepped, 80, 28))
+	row, column := int(math.Floor(y+0.5)), int(math.Floor(x+0.5))
+	if cell := frame[frameCourtRow+1+row][frameCourtLeft+1+column]; cell != 'o' {
+		t.Errorf("ball cell after one step = %q, want o at row %d, column %d", cell, row, column)
+	}
+	if cell := frame[frameCourtRow+1+row][frameCourtLeft+1+column-1]; cell == 'o' {
+		t.Errorf("ball drawn one cell left of the nearest cell")
+	}
 }
 
 func TestMatchCountdownDigitFallsAsTheCountdownRuns(t *testing.T) {

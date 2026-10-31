@@ -12,9 +12,10 @@ const (
 	maxSpeed        = 44.0
 	serveAngle      = 20 * math.Pi / 180
 	maxReboundAngle = 65 * math.Pi / 180
-	// paddleHalfSpan is half the vertical extent of a paddle's hittable span: the four rows it covers. The top and
-	// bottom rows therefore map to the steepest rebound, and the span center to a flat one.
-	paddleHalfSpan = PaddleHeight / 2.0
+	// paddleHalfSpan is half the vertical extent of a paddle's hittable span, which covers the four rows its top
+	// starts: rows [top, top+3], so the span center is 1.5 rows below the top. The top and bottom rows map to the
+	// steepest rebound, and the span center to a flat one.
+	paddleHalfSpan = (PaddleHeight - 1) / 2.0
 	// contactEpsilon is the time tolerance that makes two contact times count as the same instant.
 	contactEpsilon = 1e-7
 	// maxContacts is the most contacts one fixed step resolves. The ball holds its last valid position after that.

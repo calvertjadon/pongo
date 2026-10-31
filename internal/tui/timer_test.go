@@ -37,8 +37,8 @@ func TestCountdownCompletesThroughShellTimers(t *testing.T) {
 		model, clock = updated, fired
 
 		if completed(model) {
-			if next != nil {
-				t.Error("countdown completion requested another timer, want none")
+			if next == nil {
+				t.Error("countdown completion requested no timer, want the rally's timing sequence")
 			}
 
 			return
@@ -49,6 +49,40 @@ func TestCountdownCompletesThroughShellTimers(t *testing.T) {
 		if issue == 100 {
 			t.Fatal("countdown never completed through shell timers")
 		}
+	}
+}
+
+func TestRallyTimersMoveTheBallThroughTheShell(t *testing.T) {
+	t.Parallel()
+
+	model, _ := startMatchInShell(t)
+	clock := time.Unix(1_700_000_000, 0)
+	var issue uint64
+	for issue = 1; ; issue++ {
+		fired := clock.Add(tickPeriod)
+		updated, next := model.Update(tui.TimerMsg{Token: 1, Issue: issue, Scheduled: clock, Fired: fired})
+		model, clock = updated, fired
+		if completed(model) {
+			if next == nil {
+				t.Fatal("the countdown completion requested no rally timer")
+			}
+
+			break
+		}
+		if next == nil {
+			t.Fatalf("timer issue %d advanced the countdown but requested no next timer", issue)
+		}
+	}
+
+	before := model.View().Content
+	updated, cmd := model.Update(
+		tui.TimerMsg{Token: 2, Issue: issue + 1, Scheduled: clock, Fired: clock.Add(tickPeriod)},
+	)
+	if cmd == nil {
+		t.Error("a rally completion requested no next timer")
+	}
+	if updated.View().Content == before {
+		t.Error("a rally completion did not move the ball")
 	}
 }
 

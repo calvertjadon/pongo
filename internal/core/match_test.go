@@ -1,6 +1,7 @@
 package core_test
 
 import (
+	"math"
 	"slices"
 	"testing"
 
@@ -119,7 +120,7 @@ func TestCountdownDiscardsElapsedBeyondTheCatchUpLimit(t *testing.T) {
 	}
 }
 
-func TestCountdownCompletesIntoARallyWithStillBall(t *testing.T) {
+func TestCountdownCompletesIntoAServingRally(t *testing.T) {
 	t.Parallel()
 
 	model, schedule := openingCountdown(t)
@@ -136,11 +137,18 @@ func TestCountdownCompletesIntoARallyWithStillBall(t *testing.T) {
 	if completed.MatchPhase() != core.MatchPhaseRally {
 		t.Fatalf("countdown completion reached phase %v, want rally in play", completed.MatchPhase())
 	}
-	if effect.Kind() != core.EffectNone {
-		t.Errorf("countdown completion requested %v, want no effect", effect.Kind())
+	assertScheduled(t, effect, effect.Timer().Token)
+	if token := effect.Timer().Token; token == schedule.Timer().Token {
+		t.Fatalf("rally token = %d, want a new timing sequence", token)
 	}
 	if x, y := completed.BallPosition(); x != 34.5 || y != 9.5 {
 		t.Errorf("ball after countdown = (%v, %v), want the court center (34.5, 9.5)", x, y)
+	}
+	vx, vy := completed.BallVelocity()
+	assertClose(t, "serve vx", vx, 28*math.Cos(20*math.Pi/180))
+	assertClose(t, "serve vy", vy, -28*math.Sin(20*math.Pi/180)/2)
+	if feedback := completed.Feedback(); feedback != core.FeedbackNone {
+		t.Errorf("feedback after a serve = %v, want none", feedback)
 	}
 	assertNoOps(t, completed, []core.Event{
 		elapsed(schedule, core.ElapsedLimit),

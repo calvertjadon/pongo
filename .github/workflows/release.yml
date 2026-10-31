@@ -164,4 +164,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           VERSION: ${{ github.ref_name }}
-        run: gh release create "$VERSION" --verify-tag --title "$VERSION" --generate-notes release/*
+        run: |
+          notes="$(cat <<NOTES
+          Pongo is classic Pong in the terminal. It runs on Linux and macOS, on amd64 and arm64, in an interactive terminal of at least 80 by 28 cells.
+
+          Install with Go 1.27.0 or later:
+
+              go install github.com/calvertjadon/pongo@$VERSION
+
+          Or download the archive for your platform, check it against SHA256SUMS, extract it, and run ./pongo. Each archive holds the MIT-licensed pongo executable and LICENSE.
+          NOTES
+          )"
+          gh release create "$VERSION" \
+            --verify-tag \
+            --title "$VERSION" \
+            --generate-notes \
+            --notes "$notes" \
+            release/*

@@ -31,6 +31,10 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		model.width = message.Width
 		model.height = message.Height
 	case tea.KeyPressMsg:
+		if message.String() == "ctrl+c" {
+			return model, tea.Interrupt
+		}
+
 		event, recognized := semanticEvent(message)
 		if !recognized {
 			return model, nil

@@ -20,13 +20,13 @@ func TestTitleQuitRequestsHostExitWithoutChangingState(t *testing.T) {
 	t.Parallel()
 
 	initial := core.NewModel()
-	updated, effect := core.Update(initial, core.EventQuit)
+	updated, effect := core.Update(initial, core.EventQuit{})
 
-	if updated.Screen() != initial.Screen() {
-		t.Fatalf("quit changed screen from %v to %v", initial.Screen(), updated.Screen())
+	if updated != initial {
+		t.Fatalf("quit changed the model from %+v to %+v", initial, updated)
 	}
-	if effect != core.EffectQuit {
-		t.Fatalf("quit effect = %v, want host quit", effect)
+	if effect.Kind() != core.EffectQuit {
+		t.Fatalf("quit effect = %v, want host quit", effect.Kind())
 	}
 }
 
@@ -34,13 +34,13 @@ func TestTitleIgnoresInactiveEvents(t *testing.T) {
 	t.Parallel()
 
 	initial := core.NewModel()
-	for _, event := range []core.Event{core.EventUnknown, core.EventPrimary} {
+	for _, event := range []core.Event{core.EventPrimary{}} {
 		updated, effect := core.Update(initial, event)
-		if updated.Screen() != initial.Screen() {
-			t.Errorf("event %v changed screen from %v to %v", event, initial.Screen(), updated.Screen())
+		if updated != initial {
+			t.Errorf("event %#v changed the model from %+v to %+v", event, initial, updated)
 		}
-		if effect != core.EffectNone {
-			t.Errorf("event %v produced effect %v, want none", event, effect)
+		if effect.Kind() != core.EffectNone {
+			t.Errorf("event %#v produced effect %v, want none", event, effect.Kind())
 		}
 	}
 }
@@ -48,15 +48,15 @@ func TestTitleIgnoresInactiveEvents(t *testing.T) {
 func TestReplayProducesIdenticalStateAndEffects(t *testing.T) {
 	t.Parallel()
 
-	events := []core.Event{core.EventUnknown, core.EventPrimary, core.EventQuit}
+	events := []core.Event{core.EventPrimary{}, core.EventQuit{}, core.EventPrimary{}}
 	firstModel, firstEffects := replay(events)
 	secondModel, secondEffects := replay(events)
 
-	if firstModel.Screen() != secondModel.Screen() {
-		t.Fatalf("replay screen = %v, want %v", secondModel.Screen(), firstModel.Screen())
+	if firstModel != secondModel {
+		t.Fatalf("replay model = %+v, want %+v", secondModel, firstModel)
 	}
 	if !slices.Equal(firstEffects, secondEffects) {
-		t.Fatalf("replay effects = %v, want %v", secondEffects, firstEffects)
+		t.Fatalf("replay effects = %+v, want %+v", secondEffects, firstEffects)
 	}
 }
 

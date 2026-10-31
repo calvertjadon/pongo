@@ -55,18 +55,21 @@ func (model Model) View() tea.View {
 func semanticEvent(message tea.KeyPressMsg) (core.Event, bool) {
 	switch message.String() {
 	case "q", "Q":
-		return core.EventQuit, true
+		return core.EventQuit{}, true
 	case "enter":
-		return core.EventPrimary, true
+		return core.EventPrimary{}, true
 	default:
-		return core.EventUnknown, false
+		return nil, false
 	}
 }
 
 func command(effect core.Effect) tea.Cmd {
-	if effect == core.EffectQuit {
+	switch effect.Kind() {
+	case core.EffectQuit:
 		return tea.Quit
+	case core.EffectNone:
+		return nil
+	default:
+		return nil
 	}
-
-	return nil
 }

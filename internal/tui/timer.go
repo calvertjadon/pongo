@@ -26,27 +26,52 @@ func (message TimerMsg) elapsed() core.Event {
 	return core.EventElapsed{Elapsed: coreDuration(message.Fired.Sub(message.Scheduled)), Token: message.Token}
 }
 
-// timerChain is the shell's timer scheduling state: the request it issued last and a request number that tells each
-// issued timer apart. A resumed sequence can leave two timers in flight, so only the latest issue is honored.
+// timerChain is the shell's timer scheduling state: the request it issued last, a request number that tells each
+// issued timer apart, and whether a timing sequence is still owed time. A resumed sequence can leave two timers in
+// flight, so only the latest issue is honored.
 type timerChain struct {
 	token core.TimerToken
 	delay core.Duration
 	issue uint64
+	live  bool
 }
 
-// requested records a core timer request as the chain's latest one.
+// requested records a core timer request as the chain's latest one. The sequence stays live until the core answers a
+// completion without asking for another timer.
 func (chain timerChain) requested(timer core.Timer) timerChain {
 	chain.token = timer.Token
 	chain.delay = timer.Delay
 	chain.issue++
+	chain.live = true
 
 	return chain
 }
 
-// matches reports whether one completion belongs to the chain's latest request. A chain that requested no timer
-// matches nothing, and only the latest issue of the current request is honored.
+// matches reports whether one completion belongs to the chain's latest request. A chain with no live sequence matches
+// nothing, and only the latest request number of the live sequence is honored, so a completion left over from a
+// paused, abandoned, or undersized sequence is dropped.
 func (chain timerChain) matches(message TimerMsg) bool {
-	return chain.token != 0 && message.Issue == chain.issue
+	return chain.live && message.Token == chain.token && message.Issue == chain.issue
+}
+
+// stopped records that the core answered the latest completion without requesting another timer. The sequence is over,
+// so recovery must not re-arm it.
+func (chain timerChain) stopped() timerChain {
+	chain.live = false
+
+	return chain
+}
+
+// resumed re-arms a live sequence after an undersized terminal. The new request number makes the completion that was
+// in flight while undersized arrive stale, and the fresh baseline taken now means time spent undersized is never
+// caught up.
+func (chain timerChain) resumed() (timerChain, tea.Cmd) {
+	if !chain.live {
+		return chain, nil
+	}
+	chain.issue++
+
+	return chain, chain.tick()
 }
 
 // tick asks the host for one timer completion for the chain's latest request.

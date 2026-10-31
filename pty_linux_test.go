@@ -8,6 +8,12 @@ import (
 	"unsafe"
 )
 
+// normalizeState returns the terminal state unchanged, because Linux has no driver-set flag outside a program's
+// control.
+func normalizeState(state string) string {
+	return state
+}
+
 // openPseudoTerminal returns the controller side of a new pseudo-terminal and its unlocked terminal side.
 func openPseudoTerminal() (*os.File, *os.File, error) {
 	controller, err := openBlocking("/dev/ptmx")

@@ -47,9 +47,7 @@ func TestGameRefusesToStartWithoutTerminal(t *testing.T) {
 		command.Stderr = &stderr
 
 		assertStartupRejected(t, command, &stderr)
-		if after := terminal.state(t); after != before {
-			t.Fatalf("terminal state changed:\nbefore:\n%s\nafter:\n%s", before, after)
-		}
+		assertTerminalRestored(t, terminal, before, "a rejected startup")
 	})
 	t.Run("input not a terminal", func(t *testing.T) {
 		t.Parallel()
@@ -70,34 +68,57 @@ func TestSessionExitsRestoreTerminal(t *testing.T) {
 	t.Parallel()
 
 	pongo := buildPongo(t)
-	for _, exit := range []struct {
-		name   string
-		status int
-		end    func(*pseudoTerminal, *os.Process) error
-	}{
+	for _, exit := range sessionExits() {
+		t.Run(exit.name, func(t *testing.T) {
+			t.Parallel()
+
+			assertSessionExit(t, pongo, exit)
+		})
+	}
+}
+
+// sessionExit describes one way to end a game session and the documented exit status it reports.
+type sessionExit struct {
+	name   string
+	status int
+	end    func(*pseudoTerminal, *os.Process) error
+}
+
+// sessionExits lists every catchable way to leave a running game.
+func sessionExits() []sessionExit {
+	return []sessionExit{
 		{name: "Q on the title", status: 0, end: typing("q")},
 		{name: "Ctrl+C", status: 130, end: typing("\x03")},
 		{name: "SIGINT", status: 130, end: signaling(syscall.SIGINT)},
 		{name: "SIGHUP", status: 129, end: signaling(syscall.SIGHUP)},
 		{name: "SIGTERM", status: 143, end: signaling(syscall.SIGTERM)},
-	} {
-		t.Run(exit.name, func(t *testing.T) {
-			t.Parallel()
+	}
+}
 
-			terminal := newPseudoTerminal(t, 80, 28)
-			before := terminal.state(t)
-			command := terminal.startGame(t, pongo, t.TempDir())
-			if err := exit.end(terminal, command.Process); err != nil {
-				t.Fatalf("end session: %v", err)
-			}
+// assertSessionExit runs a game on a fresh pseudo-terminal, ends it the named way, and checks the status and terminal.
+func assertSessionExit(t *testing.T, executable string, exit sessionExit) {
+	t.Helper()
 
-			if status := waitForExit(t, command); status != exit.status {
-				t.Fatalf("pongo exited %d after %s, want %d", status, exit.name, exit.status)
-			}
-			if after := terminal.state(t); after != before {
-				t.Fatalf("terminal not restored after %s:\nbefore:\n%s\nafter:\n%s", exit.name, before, after)
-			}
-		})
+	terminal := newPseudoTerminal(t, 80, 28)
+	before := terminal.state(t)
+	command := terminal.startGame(t, executable, t.TempDir())
+	if err := exit.end(terminal, command.Process); err != nil {
+		t.Fatalf("end session: %v", err)
+	}
+
+	if status := waitForExit(t, command); status != exit.status {
+		t.Fatalf("pongo exited %d after %s, want %d", status, exit.name, exit.status)
+	}
+	assertTerminalRestored(t, terminal, before, exit.name)
+}
+
+// assertTerminalRestored requires the terminal's settings to match the state recorded before the program ran.
+func assertTerminalRestored(t *testing.T, terminal *pseudoTerminal, before, event string) {
+	t.Helper()
+
+	after := terminal.state(t)
+	if normalizeState(after) != normalizeState(before) {
+		t.Fatalf("terminal not restored after %s:\nbefore:\n%s\nafter:\n%s", event, before, after)
 	}
 }
 

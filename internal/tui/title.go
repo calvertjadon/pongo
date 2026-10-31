@@ -11,8 +11,13 @@ const (
 	minimumHeight = 28
 )
 
-// Render projects semantic application state into the current terminal dimensions.
+// Render projects semantic application state into the current terminal dimensions. It shows the size notice instead
+// of the application while the terminal is undersized, whatever screen is active.
 func Render(application core.Model, width, height int) string {
+	if undersized(width, height) {
+		return renderNotice(width, height)
+	}
+
 	switch application.Screen() {
 	case core.ScreenTitle:
 		return placeFixed(renderTitle(), width, height)
@@ -31,12 +36,9 @@ func renderTitle() string {
 	return lipgloss.JoinVertical(lipgloss.Center, "PONGO", "", "Classic Pong for your terminal.", "", prompts)
 }
 
-// placeFixed centers content in the fixed 80 by 28 layout, then centers that layout in the terminal. Odd surplus
-// goes to the right and below.
+// placeFixed centers content in the fixed 80 by 28 layout, then centers that layout in the terminal. Render only
+// calls it for an adequate terminal. Odd surplus goes to the right and below.
 func placeFixed(content string, width, height int) string {
-	if width < minimumWidth || height < minimumHeight {
-		return content
-	}
 	canvas := lipgloss.Place(minimumWidth, minimumHeight, lipgloss.Center, lipgloss.Center, content)
 
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, canvas)

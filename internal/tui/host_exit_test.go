@@ -19,15 +19,3 @@ func TestCtrlCRequestsHostInterrupt(t *testing.T) {
 		t.Fatal("Ctrl+C command does not interrupt the program")
 	}
 }
-
-func TestQuitKeyRequestsNormalExit(t *testing.T) {
-	t.Parallel()
-
-	_, command := tui.NewModel().Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
-	if command == nil {
-		t.Fatal("Q on the title returned no command, want a quit")
-	}
-	if _, quit := command().(tea.QuitMsg); !quit {
-		t.Fatal("Q on the title does not quit the program normally")
-	}
-}

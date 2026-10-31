@@ -36,6 +36,14 @@ func gatedKeys() []tea.KeyPressMsg {
 	}
 }
 
+// counting reports whether the shell's view still shows a countdown digit over the court center. Absence of the digit
+// is the phase signal that survives a rally whose ball has already moved off the center.
+func counting(model tea.Model) bool {
+	cell := lines(model.View().Content)[frameCenterRow][frameCenterCol]
+
+	return cell >= '1' && cell <= '3'
+}
+
 // timerMessage builds the countdown completion one live sequence reports after tickPeriod.
 func timerMessage(issue uint64, scheduled time.Time) tui.TimerMsg {
 	return tui.TimerMsg{Token: 1, Issue: issue, Scheduled: scheduled, Fired: scheduled.Add(tickPeriod)}
@@ -123,7 +131,7 @@ func TestRecoveredMatchContinuesWithoutCatchUp(t *testing.T) {
 		model, issue, clock = tickCountdown(t, recovered, issue, clock)
 		recovered = model
 		honored++
-		if completed(recovered) {
+		if !counting(recovered) {
 			break
 		}
 		if honored > want {
@@ -149,7 +157,7 @@ func TestForeignTokenDoesNotEndTheLiveSequence(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("the genuine completion after a foreign token requested no next timer")
 	}
-	if completed(updated) {
+	if !counting(updated) {
 		t.Fatal("one completion after a foreign token ended the countdown")
 	}
 }
@@ -224,7 +232,7 @@ func TestAdequateResizeOnlyRecentersTheLayout(t *testing.T) {
 	want := (int(core.CountdownSteps) + stepsPerTick - 1) / stepsPerTick
 	honored := 0
 	clock := time.Unix(1_700_000_000, 0)
-	for issue := uint64(1); !completed(restored); issue++ {
+	for issue := uint64(1); counting(restored); issue++ {
 		restored, _, clock = tickCountdown(t, restored, issue, clock)
 		honored++
 		if honored > want {
@@ -242,7 +250,7 @@ func TestAdequateResizePreservesTheRally(t *testing.T) {
 	application, _ := startMatchInShell(t)
 	clock := time.Unix(1_700_000_000, 0)
 	issue := uint64(1)
-	for !completed(application) {
+	for counting(application) {
 		application, issue, clock = tickCountdown(t, application, issue, clock)
 	}
 	rally := finishCountdown(t, startedMatchInShell(t), 1)
@@ -355,7 +363,7 @@ func tickCountdown(t *testing.T, model tea.Model, issue uint64, clock time.Time)
 
 	fired := clock.Add(tickPeriod)
 	updated, cmd := model.Update(tui.TimerMsg{Token: 1, Issue: issue, Scheduled: clock, Fired: fired})
-	if cmd == nil && !completed(updated) {
+	if cmd == nil && counting(updated) {
 		t.Fatalf("countdown completion issue %d did not request the next timer", issue)
 	}
 

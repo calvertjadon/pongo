@@ -58,6 +58,16 @@ func semanticEvent(message tea.KeyPressMsg) (core.Event, bool) {
 		return core.EventQuit{}, true
 	case "enter":
 		return core.EventPrimary{}, true
+	case "esc":
+		return core.EventBack{}, true
+	case "up":
+		return core.EventNavigate{Direction: core.DirectionUp}, true
+	case "down":
+		return core.EventNavigate{Direction: core.DirectionDown}, true
+	case "left":
+		return core.EventAdjust{Direction: core.DirectionLeft}, true
+	case "right":
+		return core.EventAdjust{Direction: core.DirectionRight}, true
 	default:
 		return nil, false
 	}

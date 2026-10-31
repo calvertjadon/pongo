@@ -5,6 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/calvertjadon/pongo/internal/core"
 	"github.com/calvertjadon/pongo/internal/tui"
 )
 
@@ -27,13 +28,13 @@ func TestTitleQuitKeysRequestHostQuit(t *testing.T) {
 	}
 }
 
-func TestTitleIgnoresEnterAndUnrecognizedKeys(t *testing.T) {
+func TestTitleIgnoresKeysWithoutTitleMeaning(t *testing.T) {
 	t.Parallel()
 
 	keys := []tea.KeyPressMsg{
-		{Code: tea.KeyEnter},
 		{Code: 'x', Text: "x"},
 		{Code: tea.KeyUp},
+		{Code: tea.KeyLeft},
 		{Code: tea.KeyEscape},
 		{Code: 'p', Text: "p"},
 	}
@@ -46,6 +47,50 @@ func TestTitleIgnoresEnterAndUnrecognizedKeys(t *testing.T) {
 		}
 		if updated.View().Content != initial.View().Content {
 			t.Errorf("key %q changed the title view", key.String())
+		}
+	}
+}
+
+func TestSetupKeysDriveCoreSetupEvents(t *testing.T) {
+	t.Parallel()
+
+	keys := []tea.KeyPressMsg{
+		{Code: tea.KeyEnter},
+		{Code: tea.KeyRight},
+		{Code: tea.KeyDown},
+		{Code: tea.KeyLeft},
+		{Code: tea.KeyUp},
+		{Code: 'q', Text: "q"},
+		{Code: tea.KeyEnter},
+		{Code: tea.KeyEscape},
+		{Code: tea.KeyEnter},
+		{Code: tea.KeyDown},
+	}
+	events := []core.Event{
+		core.EventPrimary{},
+		core.EventAdjust{Direction: core.DirectionRight},
+		core.EventNavigate{Direction: core.DirectionDown},
+		core.EventAdjust{Direction: core.DirectionLeft},
+		core.EventNavigate{Direction: core.DirectionUp},
+		core.EventQuit{},
+		core.EventPrimary{},
+		core.EventBack{},
+		core.EventPrimary{},
+		core.EventNavigate{Direction: core.DirectionDown},
+	}
+
+	model := sized(tui.NewModel())
+	application := core.NewModel()
+	for index, key := range keys {
+		var cmd tea.Cmd
+		model, cmd = model.Update(key)
+		application, _ = core.Update(application, events[index])
+
+		if cmd != nil {
+			t.Fatalf("key %q produced a command, want none", key.String())
+		}
+		if model.View().Content != tui.Render(application, 80, 28) {
+			t.Fatalf("key %q does not show the core state after %#v", key.String(), events[index])
 		}
 	}
 }

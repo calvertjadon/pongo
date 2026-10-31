@@ -20,8 +20,14 @@ func TestTitleFitsMinimumTerminal(t *testing.T) {
 	if height := lipgloss.Height(view); height != 28 {
 		t.Fatalf("title height = %d, want 28", height)
 	}
-	if !strings.Contains(view, "PONGO") || !strings.Contains(view, "Q  Quit") {
-		t.Fatal("title omits its name or quit control")
+	if !strings.Contains(view, "PONGO") {
+		t.Fatal("title omits its name")
+	}
+	if row, _ := locate(lines(view), "Enter"); row < 0 || !strings.Contains(lines(view)[row], "setup") {
+		t.Error("title omits the Enter prompt for match setup")
+	}
+	if row, _ := locate(lines(view), "Q "); row < 0 || !strings.Contains(lines(view)[row], "Quit") {
+		t.Error("title omits the Q prompt for quit")
 	}
 }
 
@@ -51,4 +57,8 @@ func locate(lines []string, text string) (int, int) {
 	}
 
 	return -1, -1
+}
+
+func lines(view string) []string {
+	return strings.Split(view, "\n")
 }

@@ -3,6 +3,8 @@
 Pongo is classic arcade Pong in your terminal. You can play a friend on the same keyboard or play the computer on
 Easy, Normal, or Hard. It's written in Go with [Bubble Tea](https://github.com/charmbracelet/bubbletea).
 
+![Pongo demo: match setup, a single-player match against the computer, and the pause menu](docs/demo.gif)
+
 **Status:** v1.0.0, the complete game: match setup, local two-player and single-player matches, pausing, restarts,
 rematches, and terminal resizing. Pongo creates no config, cache, save, or log files.
 
@@ -239,6 +241,13 @@ Every command must exit with status 0, and the formatter must print no diff.
 
 CI runs the gate on Go 1.27.0. If golangci-lint fails with `export data version` typecheck errors under a newer Go
 patch release, run the gate with `GOTOOLCHAIN=go1.27.0` exported, and reinstall golangci-lint under that toolchain.
+
+### Demo recording
+
+[`docs/demo.gif`](docs/demo.gif) is recorded from [`docs/demo.tape`](docs/demo.tape) with
+[VHS](https://github.com/charmbracelet/vhs), which also needs `ttyd` and `ffmpeg`. Run `vhs docs/demo.tape` from the
+repository root. The match is scripted blind against the deterministic core, so read the comment at the top of the
+tape before you change the setup keys or anything about gameplay.
 
 ### Releases
 

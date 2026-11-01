@@ -38,11 +38,38 @@ type Timer struct {
 	Delay Duration
 }
 
-// acceptedTime limits one elapsed event's contribution and carries the part that advances whole fixed steps.
-func (match matchState) acceptedTime(elapsed Duration) (matchState, Steps) {
-	match.elapsed += min(max(elapsed, 0), ElapsedLimit)
-	steps := Steps(match.elapsed / StepDuration)
-	match.elapsed -= Duration(steps) * StepDuration
+// timingSequence is one live timing sequence: the token that identifies it and the elapsed time it has accepted but
+// not yet spent on a whole fixed step. A phase that holds one keeps asking the shell for time; replacing it with a
+// phase that holds none ends the sequence, so every later completion carrying its token is stale.
+type timingSequence struct {
+	token TimerToken
+	carry Duration
+}
 
-	return match, steps
+// beginSequence starts a new timing sequence under the session's next unused token and returns it with its first
+// timer request. The new sequence carries no time from any earlier one.
+func (model *Model) beginSequence() (timingSequence, Effect) {
+	sequence := timingSequence{token: model.nextToken}
+	model.nextToken++
+
+	return sequence, sequence.request()
+}
+
+// admit accepts one completion of this sequence and returns the whole fixed steps it completes. The completion
+// contributes at most ElapsedLimit, and time short of a whole step carries to the next completion. A completion of
+// any other sequence is rejected and changes nothing.
+func (sequence timingSequence) admit(elapsed EventElapsed) (timingSequence, Steps, bool) {
+	if elapsed.Token != sequence.token {
+		return sequence, 0, false
+	}
+	sequence.carry += min(max(elapsed.Elapsed, 0), ElapsedLimit)
+	steps := Steps(sequence.carry / StepDuration)
+	sequence.carry -= Duration(steps) * StepDuration
+
+	return sequence, steps, true
+}
+
+// request asks the shell for the next completion of this sequence.
+func (sequence timingSequence) request() Effect {
+	return Effect{kind: EffectScheduleTimer, timer: Timer{Token: sequence.token, Delay: TimerDelay}}
 }

@@ -95,13 +95,12 @@ func returnToTitle(model Model) (Model, Effect) {
 // resumeMatch enters a fresh full countdown under a new timing sequence. Its continuation remembers what the pause
 // interrupted, so completing it launches the pending serve or continues the frozen rally exactly.
 func resumeMatch(model Model, match matchState, paused pausedPhase) (Model, Effect) {
-	token := model.issueToken()
-	match.elapsed = 0
+	sequence, effect := model.beginSequence()
 	match.suspendComputer()
-	match.phase = newCountdown(token, resumedContinuation(paused.suspended))
+	match.phase = newCountdown(sequence, resumedContinuation(paused.suspended))
 	model.state = match
 
-	return model, scheduleTimer(token, TimerDelay)
+	return model, effect
 }
 
 // suspendComputer discards the computer's target for a resume countdown while keeping the error drawn for the inbound

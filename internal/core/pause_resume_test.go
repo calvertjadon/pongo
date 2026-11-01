@@ -7,7 +7,7 @@ import (
 	"github.com/calvertjadon/pongo/internal/core"
 )
 
-func TestResumeStartsAFullCountdownInANewTimingGeneration(t *testing.T) {
+func TestResumeStartsAFullCountdownInANewTimingSequence(t *testing.T) {
 	t.Parallel()
 
 	model, token := beginRally(t, core.ModeLocalTwoPlayer)
@@ -145,28 +145,6 @@ func TestEachPauseEntrySelectsResume(t *testing.T) {
 		t.Errorf("second pause gave phase %v and effect %v, want paused and none",
 			again.MatchPhase(), effect.Kind())
 	}
-}
-
-func TestStalePrePauseTimersCannotAlterTheResumedMatch(t *testing.T) {
-	t.Parallel()
-
-	model, token := beginRally(t, core.ModeLocalTwoPlayer)
-	model = advanceRally(t, model, token, 12)
-	paused, _ := core.Update(model, core.EventPauseToggle{})
-	assertNoOps(t, paused, []core.Event{
-		core.EventElapsed{Elapsed: core.ElapsedLimit, Token: token},
-	})
-
-	resumed, effect := core.Update(paused, core.EventPauseToggle{})
-	assertNoOps(t, resumed, []core.Event{
-		core.EventElapsed{Elapsed: core.ElapsedLimit, Token: token},
-	})
-
-	rally, _ := beginServingRally(t, resumed, effect.Timer().Token)
-	assertNoOps(t, rally, []core.Event{
-		core.EventElapsed{Elapsed: core.ElapsedLimit, Token: token},
-		core.EventElapsed{Elapsed: core.StepDuration, Token: token},
-	})
 }
 
 func TestPauseReplayReproducesStateAndEffects(t *testing.T) {

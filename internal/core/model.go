@@ -123,11 +123,6 @@ func (effect Effect) Timer() Timer {
 	return effect.timer
 }
 
-// scheduleTimer requests one timer completion correlated with token.
-func scheduleTimer(token TimerToken, delay Duration) Effect {
-	return Effect{kind: EffectScheduleTimer, timer: Timer{Token: token, Delay: delay}}
-}
-
 // state is the tagged top-level application state. Each variant owns its own data.
 //
 //sumtype:decl
@@ -157,14 +152,6 @@ type Model struct {
 // NewModel returns Pongo's initial semantic state.
 func NewModel() Model {
 	return Model{state: titleState{}, draft: defaultSettings(), nextToken: firstTimerToken}
-}
-
-// issueToken reserves the next correlation token for a new timing sequence.
-func (model *Model) issueToken() TimerToken {
-	token := model.nextToken
-	model.nextToken++
-
-	return token
 }
 
 // Draft returns the session's setup draft: the settings the next match will start with.

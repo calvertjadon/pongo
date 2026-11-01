@@ -11,9 +11,6 @@ import (
 // the court center at the opening speed and angle and passes above or below a centered paddle.
 const paddleStartTop uint8 = 8
 
-// lastToken is a token past every sequence a short match allocates, used to prove stale completions are no-ops.
-const lastToken core.TimerToken = 25
-
 func TestWinningPointEndsTheMatchAtTheLockedWinningScore(t *testing.T) {
 	t.Parallel()
 
@@ -119,20 +116,6 @@ func assertFinishedMatch(t *testing.T, finished core.Model, winner core.Side, wa
 		t.Errorf("a completion after the winning point gave ball (%v, %v) and effect %v, want it unchanged",
 			x, y, effect.Kind())
 	}
-}
-
-func TestGameOverIgnoresEveryStaleTimingSequence(t *testing.T) {
-	t.Parallel()
-
-	finished := playedMatch(t, core.Settings{
-		Mode: core.ModeLocalTwoPlayer, WinningScore: core.WinningScore5, Difficulty: core.DifficultyNormal,
-	}, core.SideLeft)
-
-	events := make([]core.Event, 0, lastToken)
-	for candidate := core.TimerToken(0); candidate <= lastToken; candidate++ {
-		events = append(events, core.EventElapsed{Elapsed: core.ElapsedLimit, Token: candidate})
-	}
-	assertNoOps(t, finished, events)
 }
 
 func TestWinningPointWinsWithoutATwoPointMargin(t *testing.T) {

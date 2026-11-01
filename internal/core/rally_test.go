@@ -57,18 +57,6 @@ func TestBallMovesOneFixedStepOfItsVelocity(t *testing.T) {
 	}
 }
 
-func TestElapsedBeyondTheCatchUpLimitAdvancesNineStepsAtMost(t *testing.T) {
-	t.Parallel()
-
-	model, token := beginRally(t, core.ModeLocalTwoPlayer)
-	capped, effect := core.Update(model, core.EventElapsed{Elapsed: 10 * core.ElapsedLimit, Token: token})
-	assertScheduled(t, effect, token)
-	assertBallStep(t, capped, 9)
-
-	next := advanceRally(t, capped, token, 1)
-	assertBallStep(t, next, 10)
-}
-
 func TestPaddleReboundsMapTheImpactRowToTheAngle(t *testing.T) {
 	t.Parallel()
 

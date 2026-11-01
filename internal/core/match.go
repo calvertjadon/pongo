@@ -101,22 +101,22 @@ func (continuation countdownContinuation) resumed() countdownContinuation {
 	return continuation
 }
 
-// countdownPhase waits a fixed number of steps before starting the serve or continuing a frozen rally. It owns the
-// correlation token of its timing sequence.
+// countdownPhase waits a fixed number of steps before starting the serve or continuing a frozen rally. It holds its
+// timing sequence.
 type countdownPhase struct {
 	remaining    Steps
-	token        TimerToken
+	sequence     timingSequence
 	continuation countdownContinuation
 }
 
-// newCountdown returns a full countdown that does continuation when it completes.
-func newCountdown(token TimerToken, continuation countdownContinuation) countdownPhase {
-	return countdownPhase{remaining: CountdownSteps, token: token, continuation: continuation}
+// newCountdown returns a full countdown under sequence that does continuation when it completes.
+func newCountdown(sequence timingSequence, continuation countdownContinuation) countdownPhase {
+	return countdownPhase{remaining: CountdownSteps, sequence: sequence, continuation: continuation}
 }
 
-// rallyPhase is a rally in play. It owns the correlation token of its timing sequence.
+// rallyPhase is a rally in play. It holds its timing sequence.
 type rallyPhase struct {
-	token TimerToken
+	sequence timingSequence
 }
 
 // Feedback identifies the scorer feedback shown during the countdown that follows a point. It clears when the rally
@@ -172,7 +172,6 @@ type matchState struct {
 	ball      ball
 	serve     Serve
 	feedback  Feedback
-	elapsed   Duration
 	stepCount uint32
 	computer  computer
 	phase     matchPhase
@@ -188,16 +187,16 @@ func startMatch(model Model) (Model, Effect) {
 // beginMatch starts a match at the chain's current opening directions with the given locked settings. Starting and
 // rematching share it; both build on openedMatch so the initial data has one definition.
 func beginMatch(model Model, settings Settings) (Model, Effect) {
-	token := model.issueToken()
-	model.state = openedMatch(settings, model.chain, token)
+	sequence, effect := model.beginSequence()
+	model.state = openedMatch(settings, model.chain, sequence)
 
-	return model, scheduleTimer(token, TimerDelay)
+	return model, effect
 }
 
 // openedMatch returns a match at its original start conditions: centered paddles, the resting ball, no score or
-// feedback, the chain's opening serve, and the opening countdown under token. Starting and restarting share it so the
-// reset rules live in one place; later reset paths extend this function.
-func openedMatch(settings Settings, origin chain, token TimerToken) matchState {
+// feedback, the chain's opening serve, and the opening countdown under sequence. Starting and restarting share it so
+// the reset rules live in one place; later reset paths extend this function.
+func openedMatch(settings Settings, origin chain, sequence timingSequence) matchState {
 	return matchState{
 		settings: settings,
 		origin:   origin,
@@ -205,7 +204,7 @@ func openedMatch(settings Settings, origin chain, token TimerToken) matchState {
 		ball:     resetBall(),
 		serve:    Serve{Horizontal: origin.opening, Vertical: origin.vertical},
 		computer: openedComputer(settings, origin),
-		phase:    newCountdown(token, continuationStartServe),
+		phase:    newCountdown(sequence, continuationStartServe),
 	}
 }
 
@@ -258,12 +257,13 @@ func advanceCountdown(
 	countdown countdownPhase,
 	elapsed EventElapsed,
 ) (matchState, Effect) {
-	if elapsed.Token != countdown.token {
+	var steps Steps
+	var live bool
+	countdown.sequence, steps, live = countdown.sequence.admit(elapsed)
+	if !live {
 		return match, Effect{}
 	}
 
-	var steps Steps
-	match, steps = match.acceptedTime(elapsed.Elapsed)
 	for range steps {
 		if countdown.remaining == 0 {
 			break
@@ -273,8 +273,7 @@ func advanceCountdown(
 		countdown.remaining--
 	}
 	if countdown.remaining == 0 {
-		token := model.issueToken()
-		match.elapsed = 0
+		sequence, effect := model.beginSequence()
 		if countdown.continuation.startsServe() {
 			match.ball = servedBall(match.serve)
 			match.startServeApproach()
@@ -282,14 +281,14 @@ func advanceCountdown(
 			match.resumeComputer()
 		}
 		match.feedback = FeedbackNone
-		match.phase = rallyPhase{token: token}
+		match.phase = rallyPhase{sequence: sequence}
 
-		return match, scheduleTimer(token, TimerDelay)
+		return match, effect
 	}
 
 	match.phase = countdown
 
-	return match, scheduleTimer(countdown.token, TimerDelay)
+	return match, countdown.sequence.request()
 }
 
 // advanceRally spends elapsed time on the rally's fixed steps. Each step moves the ball and resolves its contacts;
@@ -297,12 +296,13 @@ func advanceCountdown(
 // countdown. The rest of that event's movement is discarded. A completion from another timing sequence is a strict
 // no-op.
 func advanceRally(model *Model, match matchState, rally rallyPhase, elapsed EventElapsed) (matchState, Effect) {
-	if elapsed.Token != rally.token {
+	var steps Steps
+	var live bool
+	rally.sequence, steps, live = rally.sequence.admit(elapsed)
+	if !live {
 		return match, Effect{}
 	}
 
-	var steps Steps
-	match, steps = match.acceptedTime(elapsed.Elapsed)
 	for range steps {
 		match.stepCount++
 		match.moveComputer(match.computer.target())
@@ -312,8 +312,9 @@ func advanceRally(model *Model, match matchState, rally rallyPhase, elapsed Even
 		}
 		match.observeComputer()
 	}
+	match.phase = rally
 
-	return match, scheduleTimer(rally.token, TimerDelay)
+	return match, rally.sequence.request()
 }
 
 // scorer reports which player won the point when the ball has crossed a scoring boundary: the ball leaving the right
@@ -346,7 +347,6 @@ func scoredPoint(model *Model, match matchState, scorer Feedback) (matchState, E
 	model.chain.vertical = serve.Vertical
 	match.serve = serve
 	match.ball = resetBall()
-	match.elapsed = 0
 	match.computer.endApproach()
 	if winner, won := match.winner(); won {
 		match.feedback = FeedbackNone
@@ -355,11 +355,11 @@ func scoredPoint(model *Model, match matchState, scorer Feedback) (matchState, E
 		return match, Effect{}
 	}
 
-	token := model.issueToken()
+	sequence, effect := model.beginSequence()
 	match.feedback = scorer
-	match.phase = newCountdown(token, continuationStartServe)
+	match.phase = newCountdown(sequence, continuationStartServe)
 
-	return match, scheduleTimer(token, TimerDelay)
+	return match, effect
 }
 
 // moved applies one paddle step to the paddle its binding group controls. In Local two-player each group drives one

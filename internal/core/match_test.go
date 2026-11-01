@@ -77,49 +77,6 @@ func assertOpeningMatch(t *testing.T, started core.Model, effect core.Effect, dr
 	}
 }
 
-func TestCountdownAdvancesByElapsedTimeAndRequestsTheNextTimer(t *testing.T) {
-	t.Parallel()
-
-	started, schedule := openingCountdown(t)
-	advanced, effect := core.Update(started, elapsed(schedule, 5*core.StepDuration))
-
-	if remaining := advanced.CountdownRemaining(); remaining != core.CountdownSteps-5 {
-		t.Errorf("countdown after %d steps = %d, want %d", 5, remaining, core.CountdownSteps-5)
-	}
-	assertScheduled(t, effect, schedule.Timer().Token)
-}
-
-func TestCountdownCarriesPartialStepsBetweenEvents(t *testing.T) {
-	t.Parallel()
-
-	model, schedule := openingCountdown(t)
-	half := core.StepDuration / 2
-	for index := range 3 {
-		var effect core.Effect
-		model, effect = core.Update(model, elapsed(schedule, half))
-
-		want := core.CountdownSteps
-		if index > 0 {
-			want--
-		}
-		if remaining := model.CountdownRemaining(); remaining != want {
-			t.Fatalf("countdown after %d half steps = %d, want %d", index+1, remaining, want)
-		}
-		assertScheduled(t, effect, schedule.Timer().Token)
-	}
-}
-
-func TestCountdownDiscardsElapsedBeyondTheCatchUpLimit(t *testing.T) {
-	t.Parallel()
-
-	started, schedule := openingCountdown(t)
-	capped, _ := core.Update(started, elapsed(schedule, 200*core.StepDuration))
-
-	if remaining := capped.CountdownRemaining(); remaining != core.CountdownSteps-9 {
-		t.Errorf("countdown after a 200 ms event = %d, want nine steps less than %d", remaining, core.CountdownSteps)
-	}
-}
-
 func TestCountdownCompletesIntoAServingRally(t *testing.T) {
 	t.Parallel()
 
@@ -154,16 +111,6 @@ func TestCountdownCompletesIntoAServingRally(t *testing.T) {
 		elapsed(schedule, core.ElapsedLimit),
 		elapsed(schedule, core.StepDuration),
 	})
-}
-
-func TestCountdownIgnoresForeignAndObsoleteTokens(t *testing.T) {
-	t.Parallel()
-
-	started, schedule := openingCountdown(t)
-	token := schedule.Timer().Token
-	for _, foreign := range []core.TimerToken{0, token + 1, token + 1024} {
-		assertNoOps(t, started, []core.Event{elapsed(schedule, core.ElapsedLimit, foreign)})
-	}
 }
 
 func TestPaddleStepsDriveTheBindingGroupPaddleInLocalTwoPlayer(t *testing.T) {

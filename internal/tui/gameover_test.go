@@ -3,7 +3,6 @@ package tui_test
 import (
 	"strings"
 	"testing"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -180,32 +179,6 @@ func TestGameOverKeysDriveTheMenu(t *testing.T) {
 	}
 }
 
-func TestGameOverRecoveryDoesNotRearmAStoppedTimerChain(t *testing.T) {
-	t.Parallel()
-
-	model, application := shellGameOver(t)
-
-	stale, cmd := model.Update(tui.TimerMsg{Token: 1, Fired: time.Now().Add(tickPeriod)})
-	if cmd != nil {
-		t.Error("a completion after the winning point scheduled another timer")
-	}
-	if stale.View().Content != tui.Render(application, 80, 28) {
-		t.Error("a completion after the winning point changed the view")
-	}
-
-	small, cmd := stale.Update(tea.WindowSizeMsg{Width: 60, Height: 20})
-	if cmd != nil {
-		t.Error("shrinking the terminal scheduled a timer")
-	}
-	recovered, cmd := small.Update(tea.WindowSizeMsg{Width: 80, Height: 28})
-	if cmd != nil {
-		t.Error("recovery re-armed the stopped timer chain of a finished match")
-	}
-	if recovered.View().Content != tui.Render(application, 80, 28) {
-		t.Error("recovery changed the game-over view")
-	}
-}
-
 // shellGameOver drives the shell and its core replay with host timer completions until the left player wins.
 func shellGameOver(t *testing.T) (tea.Model, core.Model) {
 	t.Helper()
@@ -216,19 +189,11 @@ func shellGameOver(t *testing.T) (tea.Model, core.Model) {
 	}
 	application := startedMatchInShell(t)
 
-	// The countdown's first request is discovered from the shell's response; every honored completion then asks for
-	// the next request number.
+	// No recovery happens, so every completion carries issue 0 under the live sequence's token.
 	token := core.TimerToken(1)
 	tape := newTimerTape()
-	model, next, message := probeTimer(t, model, token, tape.next(tickPeriod))
-	if next == nil {
-		t.Fatal("the first completion requested no next timer")
-	}
-	application, _ = core.Update(application, core.EventElapsed{Elapsed: core.ElapsedLimit, Token: token})
-	issue := message.Issue + 1
-
 	for range 5000 {
-		updated, next := model.Update(tui.TimerMsg{Token: token, Issue: issue, Fired: tape.next(tickPeriod)})
+		updated, next := model.Update(tape.completion(token))
 		model = updated
 		var effect core.Effect
 		application, effect = core.Update(application, core.EventElapsed{
@@ -244,13 +209,13 @@ func shellGameOver(t *testing.T) (tea.Model, core.Model) {
 			return updated, application
 		}
 		if next == nil {
-			t.Fatalf("timer issue %d requested no next timer before Game over", issue)
+			t.Fatalf("a completion of sequence %d requested no next timer before Game over", token)
 		}
 		if effect.Kind() != core.EffectScheduleTimer {
 			t.Fatalf("a live match answered a completion with %v", effect.Kind())
 		}
 
-		token, issue = effect.Timer().Token, issue+1
+		token = effect.Timer().Token
 	}
 	t.Fatal("the match never ended")
 

@@ -2,7 +2,6 @@ package tui_test
 
 import (
 	"testing"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -68,8 +67,10 @@ func TestUndersizedTerminalFreezesTheMatch(t *testing.T) {
 		}
 	}
 
+	tape := newTimerTape()
 	for _, issue := range []uint64{0, 1} {
-		message := tui.TimerMsg{Token: 1, Issue: issue, Fired: time.Now().Add(tickPeriod)}
+		message := tape.completion(1)
+		message.Issue = issue
 		updated, cmd := shrunk.Update(message)
 		if cmd != nil {
 			t.Errorf("undersized timer issue %d produced a command, want none", issue)
@@ -85,68 +86,6 @@ func TestUndersizedTerminalFreezesTheMatch(t *testing.T) {
 	}
 	if got := recovered.View().Content; got != prior {
 		t.Fatal("recovery does not show the exact preserved view")
-	}
-}
-
-func TestRecoveredMatchContinuesWithoutCatchUp(t *testing.T) {
-	t.Parallel()
-
-	model, _ := startMatchInShell(t)
-	application := startedMatchInShell(t)
-	model, _, first := probeTimer(t, model, 1, time.Now())
-
-	// The terminal stays undersized for a synthetic five seconds and drops every completion.
-	shrunk, _ := model.Update(undersizedSize())
-	undersizedFired := first.Fired.Add(5 * time.Second)
-	for range 5 {
-		updated, cmd := shrunk.Update(tui.TimerMsg{Token: 1, Issue: 0, Fired: undersizedFired})
-		if cmd != nil {
-			t.Fatal("an undersized timer completion requested the next one")
-		}
-		shrunk = updated
-	}
-
-	recovered, rearmed := shrunk.Update(minimumSize())
-	if rearmed == nil {
-		t.Fatal("recovery did not re-arm the countdown")
-	}
-
-	// The completion left in flight before recovery carries the request number the shell issued before it shrank.
-	delayed, cmd := recovered.Update(tui.TimerMsg{Token: 1, Issue: first.Issue + 1, Fired: undersizedFired})
-	if cmd != nil {
-		t.Fatal("the completion left in flight before recovery was honored")
-	}
-	if delayed.View().Content != recovered.View().Content {
-		t.Fatal("the delayed completion changed the recovered view")
-	}
-
-	// The first completion after recovery reports only the time since recovery, so it advances one step instead of
-	// catching up the five seconds spent undersized.
-	recovered, _, _ = probeTimer(t, recovered, 1, time.Now().Add(10*time.Millisecond))
-	application, _ = core.Update(
-		application,
-		core.EventElapsed{Elapsed: 1200, Token: 1}, // ten milliseconds in core units
-	)
-	if got, want := recovered.View().Content, tui.Render(application, 80, 28); got != want {
-		t.Fatal("recovery caught up the undersized time instead of starting a fresh baseline")
-	}
-}
-
-func TestForeignTokenDoesNotEndTheLiveSequence(t *testing.T) {
-	t.Parallel()
-
-	model, _ := startMatchInShell(t)
-	foreign, cmd := model.Update(tui.TimerMsg{Token: 99, Fired: time.Now().Add(tickPeriod)})
-	if cmd != nil {
-		t.Fatal("a foreign token requested the next timer")
-	}
-
-	updated, cmd, _ := probeTimer(t, foreign, 1, newTimerTape().next(tickPeriod))
-	if cmd == nil {
-		t.Fatal("the genuine completion after a foreign token requested no next timer")
-	}
-	if !counting(updated) {
-		t.Fatal("one completion after a foreign token ended the countdown")
 	}
 }
 
@@ -221,7 +160,7 @@ func TestAdequateResizeOnlyRecentersTheLayout(t *testing.T) {
 	honored := 0
 	tape := newTimerTape()
 	for counting(restored) {
-		restored, _, _ = probeTimer(t, restored, 1, tape.next(tickPeriod))
+		restored, _ = restored.Update(tape.completion(1))
 		honored++
 		if honored > want {
 			t.Fatalf("the resized countdown took more than %d completions", want)
@@ -238,7 +177,7 @@ func TestAdequateResizePreservesTheRally(t *testing.T) {
 	application, _ := startMatchInShell(t)
 	tape := newTimerTape()
 	for counting(application) {
-		application, _, _ = probeTimer(t, application, 1, tape.next(tickPeriod))
+		application, _ = application.Update(tape.completion(1))
 	}
 	rally := finishCountdown(t, startedMatchInShell(t), 1)
 

@@ -21,10 +21,14 @@ func (model Model) resized(width, height int) (Model, tea.Cmd) {
 		return model, nil
 	}
 
-	var cmd tea.Cmd
-	model.timer, cmd = model.timer.resumed()
+	var request timerRequest
+	var rearmed bool
+	model.timer, request, rearmed = model.timer.resumed()
+	if !rearmed {
+		return model, nil
+	}
 
-	return model, cmd
+	return model, arm(request)
 }
 
 // gatedKey performs the only key actions an undersized terminal keeps: Q exits the host immediately and Ctrl+C

@@ -12,7 +12,7 @@ type Model struct {
 	application core.Model
 	width       int
 	height      int
-	timer       timerChain
+	timer       sequenceTimer
 }
 
 // NewModel returns a Bubble Tea model at Pongo's initial state.
@@ -47,16 +47,17 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 		return delivered.perform(effect)
 	case TimerMsg:
-		if model.undersized() || !model.timer.matches(message) {
+		if model.undersized() {
 			return model, nil
 		}
 
-		event := model.timer.elapsed(message)
-		model.timer.baseline = message.Fired
-		delivered, effect := model.deliver(event)
-		if effect.Kind() != core.EffectScheduleTimer {
-			delivered.timer = delivered.timer.stopped()
+		var event core.EventElapsed
+		var honored bool
+		model.timer, event, honored = model.timer.completed(message)
+		if !honored {
+			return model, nil
 		}
+		delivered, effect := model.deliver(event)
 
 		return delivered.perform(effect)
 	}
@@ -88,9 +89,10 @@ func (model Model) perform(effect core.Effect) (tea.Model, tea.Cmd) {
 	case core.EffectQuit:
 		return model, tea.Quit
 	case core.EffectScheduleTimer:
-		model.timer = model.timer.requested(effect.Timer())
+		var request timerRequest
+		model.timer, request = model.timer.requested(effect.Timer())
 
-		return model, model.timer.tick()
+		return model, arm(request)
 	default:
 		return model, nil
 	}

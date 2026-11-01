@@ -1,0 +1,6 @@
+# Output of `go build` at the repo root
+/pongo
+
+# Test and coverage artifacts
+*.test
+*.out

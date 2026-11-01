@@ -26,7 +26,7 @@ func TestResumeStartsAFullCountdownInANewTimingGeneration(t *testing.T) {
 	}
 	countdownToken := effect.Timer().Token
 	if countdownToken == token {
-		t.Errorf("resume countdown token = %d, want a new timing generation", countdownToken)
+		t.Errorf("resume countdown token = %d, want a new timing sequence", countdownToken)
 	}
 	assertScheduled(t, effect, countdownToken)
 
@@ -62,7 +62,7 @@ func TestResumeDuringACountdownLaunchesThePendingServe(t *testing.T) {
 		t.Fatalf("resume completion reached phase %v, want a rally", rally.MatchPhase())
 	}
 	if rallyToken == token {
-		t.Errorf("rally token = %d, want a new timing generation", rallyToken)
+		t.Errorf("rally token = %d, want a new timing sequence", rallyToken)
 	}
 	vx, vy := stepVelocity(t, rally, rallyToken)
 	assertClose(t, "resumed serve vx", vx, serveVX)
@@ -244,7 +244,7 @@ func TestPauseDuringAResumeCountdownStillContinuesTheFrozenRally(t *testing.T) {
 		t.Fatalf("second resume countdown = %d steps, want a full %d", remaining, core.CountdownSteps)
 	}
 	if effect.Timer().Token == firstEffect.Timer().Token {
-		t.Error("second resume reused the first resume's timing generation")
+		t.Error("second resume reused the first resume's timing sequence")
 	}
 
 	rally, rallyToken := beginServingRally(t, resumed, effect.Timer().Token)

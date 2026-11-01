@@ -35,7 +35,7 @@ func TestRestartRestoresTheOriginalStartConditions(t *testing.T) {
 	}
 	token := effect.Timer().Token
 	if token == rallyToken || token == countdownToken {
-		t.Errorf("restart token = %d, want a new timing generation", token)
+		t.Errorf("restart token = %d, want a new timing sequence", token)
 	}
 	assertScheduled(t, effect, token)
 

@@ -77,7 +77,7 @@ func runPauseRow(model Model, match matchState, paused pausedPhase) (Model, Effe
 
 // restartMatch restores the unfinished match's original start conditions and resets everything it accumulated: scores,
 // paddles, ball, rally data, feedback, and timing. Locked settings survive, and the match enters its opening countdown
-// under a new timing generation.
+// under a new timing sequence.
 func restartMatch(model Model, match matchState) (Model, Effect) {
 	model.chain = match.origin
 
@@ -92,7 +92,7 @@ func returnToTitle(model Model) (Model, Effect) {
 	return model, Effect{}
 }
 
-// resumeMatch enters a fresh full countdown under a new timing generation. Its continuation remembers what the pause
+// resumeMatch enters a fresh full countdown under a new timing sequence. Its continuation remembers what the pause
 // interrupted, so completing it launches the pending serve or continues the frozen rally exactly.
 func resumeMatch(model Model, match matchState, paused pausedPhase) (Model, Effect) {
 	token := model.issueToken()

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,8 +11,8 @@ func TestParseEntries(t *testing.T) {
 	t.Parallel()
 	document := `# a comment
 
-untriaged	file.go|f|arithmetic|a + 1 => a - 1|1
-justified	file.go|f|arithmetic|b + 1 => b - 1|1	the boundary is unreachable
+file.go|f|arithmetic|a + 1 => a - 1|1	no reachable input distinguishes it
+file.go|f|arithmetic|b + 1 => b - 1|1	pinning it would assert incidental detail
 `
 	entries, err := parseEntries(strings.NewReader(document))
 	if err != nil {
@@ -20,10 +21,11 @@ justified	file.go|f|arithmetic|b + 1 => b - 1|1	the boundary is unreachable
 	if len(entries) != 2 {
 		t.Fatalf("parsed %d entries, want 2", len(entries))
 	}
-	if entries[0].status != statusUntriaged || entries[0].reason != "" {
-		t.Fatalf("first entry = %+v, want an untriaged entry without a reason", entries[0])
+	if entries[0].identity != "file.go|f|arithmetic|a + 1 => a - 1|1" ||
+		entries[0].reason != "no reachable input distinguishes it" {
+		t.Fatalf("first entry = %+v", entries[0])
 	}
-	if entries[1].status != statusJustified || entries[1].reason != "the boundary is unreachable" {
+	if entries[1].reason != "pinning it would assert incidental detail" {
 		t.Fatalf("second entry = %+v", entries[1])
 	}
 }
@@ -35,11 +37,12 @@ func TestParseEntriesRejectsMalformedLines(t *testing.T) {
 		document string
 		want     string
 	}{
-		{"missing tab", "untriaged-only-identity\n", "want <status>"},
-		{"unknown status", "accepted\tidentity\t\n", "unknown status"},
-		{"justified without reason", "justified\tidentity\t\n", "needs a reason"},
-		{"empty identity", "untriaged\t\t\n", "empty identity"},
-		{"duplicate", "untriaged\tidentity\t\nuntriaged\tidentity\t\n", "duplicate identity"},
+		{"missing tab", "identity-only\n", "want <identity><TAB><reason>"},
+		{"empty reason", "identity\t \n", "needs a reason"},
+		{"empty identity", "\treason\n", "empty identity"},
+		{"untriaged status", "untriaged\tidentity\treason\n", "category is retired"},
+		{"justified status", "justified\tidentity\treason\n", "category is retired"},
+		{"duplicate", "identity\tfirst reason\nidentity\tsecond reason\n", "duplicate identity"},
 	}
 	for _, testCase := range cases {
 		_, err := parseEntries(strings.NewReader(testCase.document))
@@ -49,12 +52,21 @@ func TestParseEntriesRejectsMalformedLines(t *testing.T) {
 	}
 }
 
+func TestParseEntriesNamesTheLineOnRejection(t *testing.T) {
+	t.Parallel()
+	document := "# comment\n\nidentity-without-reason\n"
+	_, err := parseEntries(strings.NewReader(document))
+	if err == nil || !strings.Contains(err.Error(), "line 3:") {
+		t.Fatalf("error = %v, want it to name line 3", err)
+	}
+}
+
 func TestWriteAndLoadEntries(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "nested", "exceptions.txt")
 	entries := []entry{
-		{status: statusUntriaged, identity: "b.go|f|arithmetic|x + 1 => x - 1|1"},
-		{status: statusJustified, identity: "a.go|f|arithmetic|y + 1 => y - 1|1", reason: "cannot be observed"},
+		{identity: "b.go|f|arithmetic|x + 1 => x - 1|1", reason: "cannot be observed"},
+		{identity: "a.go|f|arithmetic|y + 1 => y - 1|1", reason: "no reachable input distinguishes it"},
 	}
 	if err := writeEntries(path, entries); err != nil {
 		t.Fatalf("writeEntries: %v", err)
@@ -66,11 +78,11 @@ func TestWriteAndLoadEntries(t *testing.T) {
 	if len(loaded) != 2 {
 		t.Fatalf("loaded %d entries, want 2", len(loaded))
 	}
-	if loaded[0].identity != entries[1].identity || loaded[0].reason != "cannot be observed" {
+	if loaded[0].identity != entries[1].identity || loaded[0].reason != entries[1].reason {
 		t.Fatalf("entries are not sorted by identity: %+v", loaded)
 	}
-	if loaded[1].status != statusUntriaged || loaded[1].reason != "" {
-		t.Fatalf("round trip lost the untriaged entry: %+v", loaded[1])
+	if loaded[1].identity != entries[0].identity || loaded[1].reason != "cannot be observed" {
+		t.Fatalf("round trip lost an entry: %+v", loaded[1])
 	}
 }
 
@@ -88,11 +100,12 @@ func TestLoadEntriesReportsParseErrors(t *testing.T) {
 	if err := writeEntries(path, nil); err != nil {
 		t.Fatalf("writeEntries: %v", err)
 	}
-	if err := appendToFile(path, "justified\tidentity\t\n"); err != nil {
+	if err := appendToFile(path, "identity\t\n"); err != nil {
 		t.Fatalf("append: %v", err)
 	}
-	if _, err := loadEntries(path); err == nil || !strings.Contains(err.Error(), "needs a reason") {
-		t.Fatalf("loadEntries error = %v, want a reason error", err)
+	if _, err := loadEntries(path); err == nil || !strings.Contains(err.Error(), "needs a reason") ||
+		!strings.Contains(err.Error(), fmt.Sprintf("line %d:", strings.Count(exceptionsHeader, "\n")+1)) {
+		t.Fatalf("loadEntries error = %v, want a line-numbered reason error", err)
 	}
 }
 

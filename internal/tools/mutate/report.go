@@ -67,56 +67,31 @@ func evaluate(mutants []*mutation, entries []entry, scope []string) (missing []*
 	return missing, stale
 }
 
-// updateEntries keeps justified entries and live untriaged ones, drops dead entries, and records new survivors.
+// updateEntries drops entries whose mutant is now dead or no longer generated, keeping every other entry and
+// never adding a new one.
 func updateEntries(entries []entry, mutants []*mutation, scope []string) []entry {
 	index := mutantIndex(mutants)
-	existing := make(map[string]bool, len(entries))
-	for _, item := range entries {
-		existing[item.identity] = true
-	}
-	updated := keepEntries(entries, index, scope)
-	updated = append(updated, newEntries(mutants, existing, scope)...)
-	sort.SliceStable(updated, func(left, right int) bool {
-		return updated[left].identity < updated[right].identity
-	})
-
-	return updated
-}
-
-func keepEntries(entries []entry, index map[string]*mutation, scope []string) []entry {
 	kept := make([]entry, 0, len(entries))
 	for _, item := range entries {
 		if keepEntry(item, index, scope) {
 			kept = append(kept, item)
 		}
 	}
+	sort.SliceStable(kept, func(left, right int) bool {
+		return kept[left].identity < kept[right].identity
+	})
 
 	return kept
 }
 
-// keepEntry reports whether an existing entry still describes a live mutant, keeping out-of-scope and justified ones.
+// keepEntry reports whether an entry still describes a live mutant, keeping out-of-scope entries untouched.
 func keepEntry(item entry, index map[string]*mutation, scope []string) bool {
-	if !inScope(scope, entryFile(item.identity)) || item.status == statusJustified {
+	if !inScope(scope, entryFile(item.identity)) {
 		return true
 	}
 	mutant, found := index[item.identity]
 
 	return found && !isDead(mutant.outcome)
-}
-
-func newEntries(mutants []*mutation, existing map[string]bool, scope []string) []entry {
-	var added []entry
-	for _, mutant := range mutants {
-		if !inScope(scope, mutant.file) || existing[mutant.identity] {
-			continue
-		}
-		if mutant.outcome != outcomeSurvived && mutant.outcome != outcomeNeverExecuted {
-			continue
-		}
-		added = append(added, entry{status: statusUntriaged, identity: mutant.identity})
-	}
-
-	return added
 }
 
 func summarize(packages []*pkgInfo, mutants []*mutation) map[string]*pkgCounts {
@@ -167,7 +142,7 @@ func printSummary(output io.Writer, packages []*pkgInfo, mutants []*mutation, el
 // reportGate prints every offender and returns the gate's exit status.
 func reportGate(output io.Writer, missing []*mutation, stale []entry, index map[string]*mutation) int {
 	if len(missing) == 0 && len(stale) == 0 {
-		_, _ = fmt.Fprintln(output, "mutation testing: every surviving mutant is listed or justified")
+		_, _ = fmt.Fprintln(output, "mutation testing: every surviving mutant is a justified exception")
 		return exitSuccess
 	}
 	for _, mutant := range missing {
@@ -176,12 +151,16 @@ func reportGate(output io.Writer, missing []*mutation, stale []entry, index map[
 		_, _ = fmt.Fprintf(output, "    before: %s\n", mutant.original)
 		_, _ = fmt.Fprintf(output, "    after:  %s\n", mutant.mutated)
 	}
+	if len(missing) > 0 {
+		_, _ = fmt.Fprintf(output, "kill each mutant with a test, or add %s by hand for Standards review\n",
+			entryFormat)
+	}
 	for _, item := range stale {
 		location := ""
 		if mutant, found := index[item.identity]; found {
 			location = fmt.Sprintf(" (%s:%d)", mutant.file, mutant.line)
 		}
-		_, _ = fmt.Fprintf(output, "stale exception: %s [%s]%s\n", item.identity, item.status, location)
+		_, _ = fmt.Fprintf(output, "stale exception: %s%s\n", item.identity, location)
 	}
 	_, _ = fmt.Fprintf(output, "mutation testing failed: %d unlisted mutant(s), %d stale exception(s)\n",
 		len(missing), len(stale))

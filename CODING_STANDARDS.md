@@ -42,9 +42,9 @@ Run `./scripts/gate.sh` from the repository root. It runs the format check, the 
 
 ## Mutation testing
 
-Run `./scripts/mutation.sh` from the repository root. It edits each non-test Go file of `internal/core` and `internal/tui` one mutation at a time, runs that package's own tests against the mutant through a build overlay, and fails when a surviving or never-executed mutant is not listed in `mutation/exceptions.txt`. A local iteration can name files with `-files internal/core/timing.go`; CI mutates everything.
+Run `./scripts/mutation.sh` from the repository root. It edits each non-test Go file of `internal/core` and `internal/tui` one mutation at a time, runs that package's own tests against the mutant through a build overlay, and fails when a surviving or never-executed mutant is not a justified exception in `mutation/exceptions.txt`. A local iteration can name files with `-files internal/core/timing.go`; CI mutates everything.
 
-`mutation/exceptions.txt` holds one entry per line: `<status><TAB><identity><TAB><reason>`. An `untriaged` entry means nobody has judged the mutant yet; a `justified` entry requires a reason. Never delete an entry merely to make the job pass: kill the mutant with a test, or justify it. After an intentional change, `./scripts/mutation.sh -update` records new survivors as untriaged and drops untriaged entries whose mutant is now killed or gone. The identity names the file, function, operator, before and after snippets, and an ordinal, so it survives unrelated edits and line shifts. Mutation testing runs as its own Linux CI job; `docs/adr/0002-mutation-testing.md` records the tool choice, test scope, and timeout policy.
+The Core and the Shell have zero surviving or never-executed mutants apart from justified exceptions. An exception is one line in `mutation/exceptions.txt`, `<identity><TAB><reason>`, where the reason shows the mutant is equivalent — no reachable input distinguishes it — or that pinning it would assert incidental detail, and is checkable against the code. Prefer killing the mutant with a test. To propose an exception, add the line by hand with its reason for Standards review; "hard to test" is not a reason. `./scripts/mutation.sh -update` only removes entries whose mutant is now killed, not viable or no longer generated, and never records a new survivor. The identity names the file, function, operator, before and after snippets, and an ordinal, so it survives unrelated edits and line shifts. Mutation testing runs as its own Linux CI job; `docs/adr/0002-mutation-testing.md` records the tool choice, test scope, and timeout policy.
 
 ## Interactive verification
 
@@ -61,6 +61,8 @@ Run Standards and Spec as separate reviews. Standards receives this file, reposi
 A review blocks only on a problem introduced by the branch or a pre-existing problem that the branch materially worsens. Classify a concrete breach as Blocking. Classify a supported but uncertain concern as Question. Each Question must become Blocking or the reviewer must withdraw it with a reason.
 
 When the branch deletes or rewrites tests, name, for each removed or weakened assertion, the test at the candidate commit that fails on the same breakage. Statement coverage does not show this; a covered line can lose its only assertion. Classify a removed assertion that no remaining test replaces as Blocking. Classify one whose replacement you cannot confirm from the diff and the tests as Question.
+
+When the branch adds or changes an exception in `mutation/exceptions.txt`, Standards checks each reason against the code. A reason that is false, unverifiable, or covers a mutant a deterministic test could kill is Blocking.
 
 The learner fixes every Blocking finding. The agent does not patch the learner's branch. After a fix, rerun the complete automated gate and both reviews from `main` to the new candidate commit. Repeat interactive steps affected by the fix, or the complete checklist if behavior changed.
 

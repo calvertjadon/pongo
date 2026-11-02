@@ -381,6 +381,129 @@ func TestRunBaselineReportsFailures(t *testing.T) {
 	}
 }
 
+const mutantSource = "package core\n\nfunc Negate(x int) int {\n\treturn -x\n}\n"
+
+// fakeMutant is a mutant of the `-x` on line 4 of mutantSource, recorded at the given coverage count.
+func fakeMutant(root, source string, count int) *mutation {
+	offset := strings.Index(source, "-x")
+
+	return &mutation{
+		file: "a.go", absPath: filepath.Join(root, "a.go"), function: "Negate", operator: "unary",
+		line: 4, col: 9, offset: offset, end: offset + 1, original: "-x", mutated: "x", src: []byte(source),
+		pkg: &pkgInfo{
+			importPath: "example.com/demo",
+			dir:        root,
+			blocks: map[string][]coverBlock{
+				"a.go": {{startLine: 4, startCol: 9, endLine: 4, endCol: 11, count: count}},
+			},
+		},
+	}
+}
+
+type execRecord struct {
+	args     []string
+	overlaid string
+}
+
+// recordingEnv returns an environment whose go command records what it was handed and reports err.
+func recordingEnv(root string, err error) (environment, *execRecord) {
+	record := &execRecord{}
+	env := environment{
+		root: root, module: "example.com/demo", tmpDir: root, goBin: "go", workers: 1,
+		exec: func(_ context.Context, _, _ string, args ...string) ([]byte, error) {
+			record.args = args
+			overlayPath := argument(args, "-overlay=")
+			if overlayPath == "" {
+				return nil, errors.New("missing overlay")
+			}
+			content, readErr := overlayContent(overlayPath)
+			if readErr != nil {
+				return nil, readErr
+			}
+			record.overlaid = content
+
+			return []byte("ok"), err
+		},
+	}
+
+	return env, record
+}
+
+func hasArgument(args []string, want string) bool {
+	for _, arg := range args {
+		if arg == want {
+			return true
+		}
+	}
+
+	return false
+}
+
+func TestRunMutantBuildsUnexecutedMutants(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		err  error
+		want outcome
+	}{
+		{"the build succeeds", nil, outcomeNeverExecuted},
+		{"the build fails", errors.New("exit status 1"), outcomeNotViable},
+	}
+	for _, testCase := range cases {
+		root := t.TempDir()
+		mustWrite(t, filepath.Join(root, "a.go"), mutantSource)
+		env, record := recordingEnv(root, testCase.err)
+		mutant := fakeMutant(root, mutantSource, 0)
+		runMutant(env, mutant)
+		if mutant.runErr != nil {
+			t.Fatalf("%s: runMutant error = %v", testCase.name, mutant.runErr)
+		}
+		if mutant.outcome != testCase.want {
+			t.Fatalf("%s: outcome = %v, want %v", testCase.name, mutant.outcome, testCase.want)
+		}
+		if argument(record.args, "-run=") != "^$" || hasArgument(record.args, "-failfast") {
+			t.Fatalf("%s: args = %v, want a build-only run", testCase.name, record.args)
+		}
+		if !strings.Contains(record.overlaid, "\treturn x\n") {
+			t.Fatalf("%s: overlay content = %q, want the mutation applied", testCase.name, record.overlaid)
+		}
+	}
+}
+
+func TestRunMutantTestsExecutedMutants(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "a.go"), mutantSource)
+	env, record := recordingEnv(root, errors.New("exit status 1"))
+	mutant := fakeMutant(root, mutantSource, 1)
+	runMutant(env, mutant)
+	if mutant.runErr != nil {
+		t.Fatalf("runMutant error = %v", mutant.runErr)
+	}
+	if mutant.outcome != outcomeKilled {
+		t.Fatalf("outcome = %v, want %v", mutant.outcome, outcomeKilled)
+	}
+	if argument(record.args, "-run=") != "" || !hasArgument(record.args, "-failfast") {
+		t.Fatalf("args = %v, want the package's tests run", record.args)
+	}
+}
+
+func TestRunMutantReportsWriteErrors(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "a.go"), mutantSource)
+	env, _ := recordingEnv(root, nil)
+	env.tmpDir = filepath.Join(root, "absent")
+	mutant := fakeMutant(root, mutantSource, 0)
+	runMutant(env, mutant)
+	if mutant.runErr == nil || !strings.Contains(mutant.runErr.Error(), "mutant-*.go") {
+		t.Fatalf("runMutant error = %v, want a temporary file error", mutant.runErr)
+	}
+	if mutant.outcome != outcomePending {
+		t.Fatalf("outcome = %v, want an unresolved mutant", mutant.outcome)
+	}
+}
+
 func argument(args []string, prefix string) string {
 	for _, arg := range args {
 		if strings.HasPrefix(arg, prefix) {
@@ -405,7 +528,7 @@ func TestPrepareRunErrors(t *testing.T) {
 	if _, err := prepareRun(config{dir: brokenModule}); err == nil {
 		t.Fatal("prepareRun accepted a go.mod without a module line")
 	}
-	mustWrite(t, filepath.Join(root, "mutation", "exceptions.txt"), "justified\tidentity\t\n")
+	mustWrite(t, filepath.Join(root, "mutation", "exceptions.txt"), "identity\t\n")
 	if _, err := prepareRun(config{dir: root, exceptions: "mutation/exceptions.txt",
 		args: []string{"./internal/core"}}); err == nil {
 		t.Fatal("prepareRun accepted a malformed exception list")
@@ -434,11 +557,12 @@ func Add(x int) int {
 func TestMutatePackagesGatesUpdatesAndDropsStaleEntries(t *testing.T) {
 	t.Parallel()
 	root, cfg := newEndToEnd(t)
-	requireInitialFailure(t, cfg)
-	requireUpdateRecordsUntriaged(t, root, cfg)
-	requireGatePasses(t, cfg)
+	offenders := requireInitialFailure(t, cfg)
+	requireUpdateAddsNothing(t, root, cfg)
+	requireGateStillFails(t, cfg, offenders)
+	requireManualExceptionsPassGate(t, root, cfg, offenders)
 	requireStaleEntryFails(t, root, cfg)
-	requireUpdateDropsStale(t, root, cfg)
+	requireUpdateDropsStale(t, root, cfg, len(offenders))
 }
 
 func newEndToEnd(t *testing.T) (string, config) {
@@ -469,7 +593,8 @@ func runMutation(t *testing.T, cfg config) (int, string) {
 	return status, output.String()
 }
 
-func requireInitialFailure(t *testing.T, cfg config) {
+// requireInitialFailure runs the gate and returns the identities it named as offenders.
+func requireInitialFailure(t *testing.T, cfg config) []string {
 	t.Helper()
 	status, output := runMutation(t, cfg)
 	if status != exitFailure {
@@ -478,9 +603,23 @@ func requireInitialFailure(t *testing.T, cfg config) {
 	if !strings.Contains(output, "survived:") || !strings.Contains(output, "never-executed:") {
 		t.Fatalf("first run did not report both offenders:\n%s", output)
 	}
+	var offenders []string
+	for _, line := range strings.Split(output, "\n") {
+		for _, prefix := range []string{"survived: ", "never-executed: "} {
+			if identity, found := strings.CutPrefix(line, prefix); found {
+				offenders = append(offenders, identity)
+			}
+		}
+	}
+	if len(offenders) == 0 {
+		t.Fatalf("first run did not name an identity:\n%s", output)
+	}
+
+	return offenders
 }
 
-func requireUpdateRecordsUntriaged(t *testing.T, root string, cfg config) {
+// requireUpdateAddsNothing checks that -update removes stale entries only and records no new survivor.
+func requireUpdateAddsNothing(t *testing.T, root string, cfg config) {
 	t.Helper()
 	cfg.update = true
 	if status, output := runMutation(t, cfg); status != exitSuccess {
@@ -490,26 +629,43 @@ func requireUpdateRecordsUntriaged(t *testing.T, root string, cfg config) {
 	if err != nil {
 		t.Fatalf("load entries: %v", err)
 	}
-	if len(entries) != 2 {
-		t.Fatalf("recorded %d entries, want 2: %+v", len(entries), entries)
+	if len(entries) != 0 {
+		t.Fatalf("update recorded %d entries, want none: %+v", len(entries), entries)
 	}
-	for _, item := range entries {
-		if item.status != statusUntriaged {
-			t.Fatalf("entry %+v is not untriaged", item)
+}
+
+func requireGateStillFails(t *testing.T, cfg config, offenders []string) {
+	t.Helper()
+	status, output := runMutation(t, cfg)
+	if status != exitFailure {
+		t.Fatalf("gate after update = %d, want %d\n%s", status, exitFailure, output)
+	}
+	for _, identity := range offenders {
+		if !strings.Contains(output, identity) {
+			t.Fatalf("gate after update did not report %q:\n%s", identity, output)
 		}
 	}
 }
 
-func requireGatePasses(t *testing.T, cfg config) {
+// requireManualExceptionsPassGate adds a justified entry by hand for each survivor, as a developer must.
+func requireManualExceptionsPassGate(t *testing.T, root string, cfg config, offenders []string) {
 	t.Helper()
+	var document strings.Builder
+	for _, identity := range offenders {
+		document.WriteString(identity)
+		document.WriteString("\tthe reason Standards will check\n")
+	}
+	if err := appendToFile(filepath.Join(root, "mutation", "exceptions.txt"), document.String()); err != nil {
+		t.Fatalf("append manual entries: %v", err)
+	}
 	if status, output := runMutation(t, cfg); status != exitSuccess {
-		t.Fatalf("gate after update = %d, want %d\n%s", status, exitSuccess, output)
+		t.Fatalf("gate with manual exceptions = %d, want %d\n%s", status, exitSuccess, output)
 	}
 }
 
 func requireStaleEntryFails(t *testing.T, root string, cfg config) {
 	t.Helper()
-	stale := "untriaged\tinternal/core/a.go|Add|arithmetic|x + 1 => x - 1|1\t\n"
+	stale := "internal/core/a.go|Add|arithmetic|x + 1 => x - 1|1\tstale reason\n"
 	if err := appendToFile(filepath.Join(root, "mutation", "exceptions.txt"), stale); err != nil {
 		t.Fatalf("append stale entry: %v", err)
 	}
@@ -522,15 +678,15 @@ func requireStaleEntryFails(t *testing.T, root string, cfg config) {
 	}
 }
 
-func requireUpdateDropsStale(t *testing.T, root string, cfg config) {
+func requireUpdateDropsStale(t *testing.T, root string, cfg config, want int) {
 	t.Helper()
 	cfg.update = true
 	if status, output := runMutation(t, cfg); status != exitSuccess {
 		t.Fatalf("stale update = %d, want %d\n%s", status, exitSuccess, output)
 	}
 	entries, err := loadEntries(filepath.Join(root, "mutation", "exceptions.txt"))
-	if err != nil || len(entries) != 2 {
-		t.Fatalf("entries after dropping the stale one = %d, %v", len(entries), err)
+	if err != nil || len(entries) != want {
+		t.Fatalf("entries after dropping the stale one = %d, %v; want %d", len(entries), err, want)
 	}
 }
 
@@ -550,6 +706,9 @@ func fakeGoCommand() commandFunc {
 		content, err := overlayContent(overlayPath)
 		if err != nil {
 			return nil, err
+		}
+		if argument(args, "-run=") == "^$" {
+			return []byte("ok"), nil
 		}
 		switch {
 		case strings.Contains(content, "x >= 0"):

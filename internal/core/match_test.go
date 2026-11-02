@@ -370,3 +370,52 @@ func replayFrom(model core.Model, events []core.Event) (core.Model, []core.Effec
 
 	return model, effects
 }
+
+// TestComputerMovesOnItsFixedStepScheduleFromTheMatchStart pins that the computer's movement schedule counts fixed
+// match steps from the start of the match, not from the start of the current phase and not backwards. Easy's 20 step
+// movement interval does not divide the opening 96 step countdown, so its first paddle move falls on rally step 64;
+// a counter that restarted with the rally, or counted down, moves on step 60 or 56 instead.
+func TestComputerMovesOnItsFixedStepScheduleFromTheMatchStart(t *testing.T) {
+	t.Parallel()
+
+	model, token := computerRally(t, core.DifficultyEasy)
+	for step := 1; step < 64; step++ {
+		model = nextComputerStep(t, model, token)
+		if _, top := model.PaddleTops(); top != 8 {
+			t.Fatalf("paddle moved to %d on rally step %d, want the centered 8 until step 64", top, step)
+		}
+	}
+	model = nextComputerStep(t, model, token)
+	if _, top := model.PaddleTops(); top != 6 {
+		t.Fatalf("paddle on rally step 64 = %d, want its first scheduled move to 6", top)
+	}
+}
+
+// TestServeScoresOnTheStepTheBallPassesTheLastColumn pins the scoring boundary to the last interior column: an
+// unimpeded serve from the court center crosses column 69 on its 158th fixed step, and the point is awarded then
+// rather than two columns later.
+func TestServeScoresOnTheStepTheBallPassesTheLastColumn(t *testing.T) {
+	t.Parallel()
+
+	model, token := beginRally(t, core.ModeLocalTwoPlayer)
+	scoredOn := 0
+	for step := 1; step <= 400 && scoredOn == 0; step++ {
+		var effect core.Effect
+		model, effect = core.Update(model, core.EventElapsed{Elapsed: core.StepDuration, Token: token})
+		if effect.Kind() == core.EffectScheduleTimer {
+			token = effect.Timer().Token
+		}
+		if left, right := model.Score(); left != 0 || right != 0 {
+			scoredOn = step
+		}
+	}
+	if scoredOn != 158 {
+		t.Fatalf("the unimpeded serve scored on rally step %d, want 158", scoredOn)
+	}
+	if left, right := model.Score(); left != 1 || right != 0 {
+		t.Errorf("score after the ball left the right edge = %d:%d, want 1:0", left, right)
+	}
+	if model.MatchPhase() != core.MatchPhaseCountdown {
+		t.Errorf("phase after the point = %v, want the next serve's countdown", model.MatchPhase())
+	}
+}

@@ -143,6 +143,39 @@ func shellMatch(t *testing.T) Model {
 	return model
 }
 
+// TestHostDurationConvertsCoreUnitsToHostTime pins the host interval a core time span asks for.
+func TestHostDurationConvertsCoreUnitsToHostTime(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		units core.Duration
+		want  time.Duration
+	}{
+		{name: "no time", units: 0, want: 0},
+		{name: "one fixed step", units: core.StepDuration, want: 8333333 * time.Nanosecond},
+		{name: "half a second", units: core.DurationUnitsPerSecond / 2, want: 500 * time.Millisecond},
+		{name: "one second", units: core.DurationUnitsPerSecond, want: time.Second},
+		{name: "three seconds", units: 3 * core.DurationUnitsPerSecond, want: 3 * time.Second},
+	}
+	for _, test := range tests {
+		if got := hostDuration(test.units); got != test.want {
+			t.Errorf("%s: hostDuration(%d) = %v, want %v", test.name, test.units, got, test.want)
+		}
+	}
+}
+
+// TestRequestedCarriesTheCoreDelayToTheHostTimer pins the effect request: the host timer asks for the core's delay.
+func TestRequestedCarriesTheCoreDelayToTheHostTimer(t *testing.T) {
+	t.Parallel()
+
+	const delay = core.Duration(2500)
+	_, request := sequenceTimer{}.requested(core.Timer{Token: 7, Delay: delay})
+	if request.token != 7 || request.delay != delay {
+		t.Errorf("requested timer = token %d delay %d, want token 7 delay %d", request.token, request.delay, delay)
+	}
+}
+
 func TestRecoveryMeasuresFromTheRearmedTimerWithoutCatchUp(t *testing.T) {
 	t.Parallel()
 

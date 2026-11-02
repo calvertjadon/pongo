@@ -2,7 +2,7 @@
 //
 // Each mutant is one single edit to one non-test Go file. The tool runs the mutant package's own tests against an
 // overlay of the mutated file, so tracked files are never written, and it fails when a surviving or never-executed
-// mutant is not listed in mutation/exceptions.txt.
+// mutant is not a justified exception in mutation/exceptions.txt.
 package main
 
 import (
@@ -51,7 +51,7 @@ func parseConfig(args []string, stderr io.Writer) (config, error) {
 	exceptions := set.String("exceptions", "mutation/exceptions.txt", "exception list to read and update")
 	files := set.String("files", "", "comma-separated repo-relative files to mutate")
 	workers := set.Int("workers", runtime.NumCPU(), "mutant test runs in parallel")
-	update := set.Bool("update", false, "rewrite the exception list")
+	update := set.Bool("update", false, "remove stale entries from the exception list")
 	flags, positional, err := splitArguments(args)
 	if err != nil {
 		return config{}, err

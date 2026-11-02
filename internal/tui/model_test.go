@@ -101,6 +101,15 @@ func sized(model tui.Model) tea.Model {
 	return resized
 }
 
+// TestViewRendersInTheAlternateScreen pins the terminal lifecycle: the shell draws in the alternate screen.
+func TestViewRendersInTheAlternateScreen(t *testing.T) {
+	t.Parallel()
+
+	if !sized(tui.NewModel()).View().AltScreen {
+		t.Error("View does not request the alternate screen")
+	}
+}
+
 func TestMatchIgnoresQuitBackAndKeyReleaseMessages(t *testing.T) {
 	t.Parallel()
 

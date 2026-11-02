@@ -227,3 +227,34 @@ func finishedMatch(t *testing.T) core.Model {
 		Mode: core.ModeLocalTwoPlayer, WinningScore: core.WinningScore5, Difficulty: core.DifficultyNormal,
 	}, core.SideLeft)
 }
+
+// TestEverySessionTimingSequenceGetsAFreshNonZeroToken pins the timer-token contract: each timing sequence the session
+// starts has a token of its own that is never zero, so a completion can never be confused with the zero value or with
+// an earlier sequence's completion.
+func TestEverySessionTimingSequenceGetsAFreshNonZeroToken(t *testing.T) {
+	t.Parallel()
+
+	model, schedule := openingCountdown(t)
+	seen := make(map[core.TimerToken]bool)
+	record := func(token core.TimerToken) {
+		t.Helper()
+
+		if token == 0 {
+			t.Fatal("timing sequence token = 0, want a token that never identifies a sequence")
+		}
+		if seen[token] {
+			t.Fatalf("timing sequence token %d was issued twice in one session", token)
+		}
+		seen[token] = true
+	}
+
+	record(schedule.Timer().Token)
+	rally, rallyToken := beginServingRally(t, model, schedule.Timer().Token)
+	record(rallyToken)
+
+	_, effect := runUntilPoint(t, rally, rallyToken, [2]uint8{1, 0})
+	if effect.Kind() != core.EffectScheduleTimer {
+		t.Fatalf("the point requested %v, want the next countdown's timer", effect.Kind())
+	}
+	record(effect.Timer().Token)
+}

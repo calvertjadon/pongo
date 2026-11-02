@@ -332,16 +332,11 @@ func inScope(scope []string, file string) bool {
 	return false
 }
 
-// runMutants measures each package, marks the mutants coverage proves unexecuted, then runs the rest in parallel.
+// runMutants measures each package, then runs every mutant in parallel; one coverage proves unexecuted is built instead.
 func runMutants(env environment, packages []*pkgInfo, mutants []*mutation) error {
 	for _, pkg := range packages {
 		if err := runBaseline(env, pkg); err != nil {
 			return err
-		}
-	}
-	for _, mutant := range mutants {
-		if provenUnexecuted(mutant.pkg.blocks[mutant.file], mutant.line, mutant.col) {
-			mutant.outcome = outcomeNeverExecuted
 		}
 	}
 	runPending(env, mutants)
@@ -408,31 +403,44 @@ func runPending(env environment, mutants []*mutation) {
 	group.Wait()
 }
 
-// runMutant tests one mutant through an overlay so no tracked file is ever written.
+// runMutant tests one mutant through an overlay so no tracked file is ever written. A mutant that coverage proves
+// unexecuted is only built: it must compile to be never executed rather than not viable.
 func runMutant(env environment, mutant *mutation) {
-	mutated := applyMutation(mutant.src, mutant.offset, mutant.end, mutant.replacement)
-	source, err := os.CreateTemp(env.tmpDir, "mutant-*.go")
-	if err != nil {
-		mutant.runErr = fmt.Errorf("create mutant file: %w", err)
-		return
-	}
-	sourcePath := source.Name()
-	defer func() { _ = os.Remove(sourcePath) }()
-	if _, err := source.Write(mutated); err != nil {
-		_ = source.Close()
-		mutant.runErr = fmt.Errorf("write mutant file: %w", err)
-		return
-	}
-	if err := source.Close(); err != nil {
-		mutant.runErr = fmt.Errorf("close mutant file: %w", err)
-		return
-	}
-	overlayPath, err := writeOverlay(env.tmpDir, mutant.absPath, sourcePath)
+	sourcePath, overlayPath, err := writeMutantFile(env, mutant)
 	if err != nil {
 		mutant.runErr = err
 		return
 	}
-	defer func() { _ = os.Remove(overlayPath) }()
+	defer func() {
+		_ = os.Remove(sourcePath)
+		_ = os.Remove(overlayPath)
+	}()
+	if provenUnexecuted(mutant.pkg.blocks[mutant.file], mutant.line, mutant.col) {
+		mutant.outcome = buildMutant(env, mutant, overlayPath)
+		return
+	}
+	mutant.outcome = testMutant(env, mutant, overlayPath)
+}
+
+// writeMutantFile writes the mutant's source and the overlay that points the go command at it.
+func writeMutantFile(env environment, mutant *mutation) (string, string, error) {
+	mutated := applyMutation(mutant.src, mutant.offset, mutant.end, mutant.replacement)
+	sourcePath, err := writeTempFile(env.tmpDir, "mutant-*.go", mutated)
+	if err != nil {
+		return "", "", err
+	}
+	overlayPath, err := writeOverlay(env.tmpDir, mutant.absPath, sourcePath)
+	if err != nil {
+		_ = os.Remove(sourcePath)
+
+		return "", "", err
+	}
+
+	return sourcePath, overlayPath, nil
+}
+
+// testMutant runs the mutant against the package's own tests and classifies the result.
+func testMutant(env environment, mutant *mutation, overlayPath string) outcome {
 	timeout := mutantTimeout(mutant.pkg.baseline)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout+mutantGrace)
 	defer cancel()
@@ -441,7 +449,25 @@ func runMutant(env environment, mutant *mutation) {
 		"-overlay=" + overlayPath, mutant.pkg.importPath,
 	}
 	output, err := env.exec(ctx, env.root, env.goBin, args...)
-	mutant.outcome = classify(ctx, output, err)
+
+	return classify(ctx, output, err)
+}
+
+// buildMutant compiles the mutant and the package's tests without running them: a failed build is not viable, and a
+// build that succeeds leaves the coverage-proven verdict of never executed.
+func buildMutant(env environment, mutant *mutation, overlayPath string) outcome {
+	timeout := mutantTimeout(mutant.pkg.baseline)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout+mutantGrace)
+	defer cancel()
+	args := []string{
+		"test", "-count=1", "-run=^$", "-timeout=" + timeout.String(),
+		"-overlay=" + overlayPath, mutant.pkg.importPath,
+	}
+	if _, err := env.exec(ctx, env.root, env.goBin, args...); err != nil {
+		return outcomeNotViable
+	}
+
+	return outcomeNeverExecuted
 }
 
 // writeOverlay writes the JSON overlay that points the go command at the mutant's temporary file.
@@ -450,17 +476,27 @@ func writeOverlay(tmpDir, original, replacement string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("encode overlay: %w", err)
 	}
-	file, err := os.CreateTemp(tmpDir, "overlay-*.json")
+
+	return writeTempFile(tmpDir, "overlay-*.json", payload)
+}
+
+// writeTempFile writes content to a new file in dir and returns its path.
+func writeTempFile(dir, pattern string, content []byte) (string, error) {
+	file, err := os.CreateTemp(dir, pattern)
 	if err != nil {
-		return "", fmt.Errorf("create overlay: %w", err)
+		return "", fmt.Errorf("create %s: %w", pattern, err)
 	}
 	path := file.Name()
-	if _, err := file.Write(payload); err != nil {
+	if _, err := file.Write(content); err != nil {
 		_ = file.Close()
-		return "", fmt.Errorf("write overlay: %w", err)
+		_ = os.Remove(path)
+
+		return "", fmt.Errorf("write %s: %w", path, err)
 	}
 	if err := file.Close(); err != nil {
-		return "", fmt.Errorf("close overlay: %w", err)
+		_ = os.Remove(path)
+
+		return "", fmt.Errorf("close %s: %w", path, err)
 	}
 
 	return path, nil

@@ -10,28 +10,29 @@ import (
 	"strings"
 )
 
-// The two statuses an exception entry may carry.
+// retiredStatus names the status column the format no longer carries, so its reuse fails with a useful message.
 const (
-	statusUntriaged = "untriaged"
-	statusJustified = "justified"
+	retiredStatus          = "untriaged"
+	retiredJustifiedStatus = "justified"
+	entryFormat            = "<identity><TAB><reason>"
 )
 
-// entry is one line of mutation/exceptions.txt.
+// entry is one line of mutation/exceptions.txt: a mutant identity and the reason it may survive.
 type entry struct {
-	status   string
 	identity string
 	reason   string
 }
 
 // exceptionsHeader documents the file's format for humans editing it.
-const exceptionsHeader = `# Mutation-testing exceptions, one mutant per line.
+const exceptionsHeader = `# Mutation-testing exceptions, one justified mutant per line.
 #
-# Format: <status><TAB><identity><TAB><reason>
-#   untriaged  nobody has judged this mutant yet.
-#   justified  the reason explains why this mutant may survive.
+# Format: <identity><TAB><reason>
+# Every entry is a justified exception: the reason must show the mutant is equivalent, because no reachable input
+# distinguishes it, or that pinning it would assert incidental detail, and it must be checkable against the code.
 #
-# Regenerate survivors with ./scripts/mutation.sh -update. Never delete an entry merely to make the job pass:
-# kill the mutant with a test, or justify it with a reason.
+# Prefer killing the mutant with a test. If a reason is genuinely justified, add the entry by hand for Standards
+# review. ./scripts/mutation.sh -update only removes entries whose mutant is now killed, not viable or no longer
+# generated; it never records a new survivor.
 `
 
 // parseEntries reads the line-oriented exception list and rejects ambiguous or malformed entries.
@@ -65,27 +66,24 @@ func parseEntries(reader io.Reader) ([]entry, error) {
 }
 
 func parseEntryLine(line string) (entry, error) {
-	fields := strings.Split(line, "\t")
-	if len(fields) < 2 {
-		return entry{}, fmt.Errorf("want <status><TAB><identity><TAB><reason>")
+	identityPart, reasonPart, found := strings.Cut(line, "\t")
+	if !found {
+		return entry{}, fmt.Errorf("want %s", entryFormat)
 	}
-	status := strings.TrimSpace(fields[0])
-	identity := strings.TrimSpace(fields[1])
-	reason := ""
-	if len(fields) > 2 {
-		reason = strings.TrimSpace(strings.Join(fields[2:], " "))
-	}
-	if status != statusUntriaged && status != statusJustified {
-		return entry{}, fmt.Errorf("unknown status %q", status)
+	identity := strings.TrimSpace(identityPart)
+	if identity == retiredStatus || identity == retiredJustifiedStatus {
+		return entry{}, fmt.Errorf("the list is %s; the %q category is retired: kill the mutant or justify it",
+			entryFormat, identity)
 	}
 	if identity == "" {
 		return entry{}, fmt.Errorf("empty identity")
 	}
-	if status == statusJustified && reason == "" {
-		return entry{}, fmt.Errorf("justified entry %q needs a reason", identity)
+	reason := strings.TrimSpace(reasonPart)
+	if reason == "" {
+		return entry{}, fmt.Errorf("entry %q needs a reason", identity)
 	}
 
-	return entry{status: status, identity: identity, reason: reason}, nil
+	return entry{identity: identity, reason: reason}, nil
 }
 
 // loadEntries reads the exception list, treating a missing file as an empty list.
@@ -115,8 +113,6 @@ func writeEntries(path string, entries []entry) error {
 	var document strings.Builder
 	document.WriteString(exceptionsHeader)
 	for _, item := range sorted {
-		document.WriteString(item.status)
-		document.WriteByte('\t')
 		document.WriteString(item.identity)
 		document.WriteByte('\t')
 		document.WriteString(item.reason)

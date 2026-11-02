@@ -37,10 +37,10 @@ func TestEvaluateFindsUnlistedSurvivorsAndStaleEntries(t *testing.T) {
 		makeMutant("a.go", "f|arithmetic|n + 1 => n - 1|1", outcomeNotViable),
 	}
 	entries := []entry{
-		{status: statusUntriaged, identity: "a.go|f|arithmetic|y + 1 => y - 1|1"},
-		{status: statusUntriaged, identity: "a.go|f|arithmetic|k + 1 => k - 1|1"},
-		{status: statusUntriaged, identity: "a.go|f|arithmetic|n + 1 => n - 1|1"},
-		{status: statusUntriaged, identity: "a.go|f|arithmetic|gone => gone|1"},
+		{identity: "a.go|f|arithmetic|y + 1 => y - 1|1", reason: "justified reason"},
+		{identity: "a.go|f|arithmetic|k + 1 => k - 1|1", reason: "justified reason"},
+		{identity: "a.go|f|arithmetic|n + 1 => n - 1|1", reason: "justified reason"},
+		{identity: "a.go|f|arithmetic|gone => gone|1", reason: "justified reason"},
 	}
 	missing, stale := evaluate(mutants, entries, nil)
 	if len(missing) != 2 {
@@ -66,8 +66,8 @@ func TestEvaluateHonoursScope(t *testing.T) {
 		makeMutant("b.go", "f|arithmetic|y + 1 => y - 1|1", outcomeSurvived),
 	}
 	entries := []entry{
-		{status: statusUntriaged, identity: "a.go|f|arithmetic|gone => gone|1"},
-		{status: statusUntriaged, identity: "b.go|f|arithmetic|gone => gone|1"},
+		{identity: "a.go|f|arithmetic|gone => gone|1", reason: "justified reason"},
+		{identity: "b.go|f|arithmetic|gone => gone|1", reason: "justified reason"},
 	}
 	missing, stale := evaluate(mutants, entries, []string{"a.go"})
 	if len(missing) != 1 || len(stale) != 1 {
@@ -78,7 +78,7 @@ func TestEvaluateHonoursScope(t *testing.T) {
 	}
 }
 
-func TestUpdateEntriesKeepsJustifiedAndLiveEntries(t *testing.T) {
+func TestRemoveStaleEntriesDropsDeadEntriesAndKeepsLiveOnes(t *testing.T) {
 	t.Parallel()
 	mutants := []*mutation{
 		makeMutant("a.go", "f|arithmetic|kept => kept|1", outcomeSurvived),
@@ -88,42 +88,37 @@ func TestUpdateEntriesKeepsJustifiedAndLiveEntries(t *testing.T) {
 		makeMutant("a.go", "f|arithmetic|broken => broken|1", outcomeNotViable),
 	}
 	entries := []entry{
-		{status: statusUntriaged, identity: "a.go|f|arithmetic|kept => kept|1"},
-		{status: statusUntriaged, identity: "a.go|f|arithmetic|killed => killed|1"},
-		{status: statusUntriaged, identity: "a.go|f|arithmetic|broken => broken|1"},
-		{status: statusJustified, identity: "a.go|f|arithmetic|dead => dead|1", reason: "cannot be observed"},
+		{identity: "a.go|f|arithmetic|kept => kept|1", reason: "no reachable input distinguishes it"},
+		{identity: "a.go|f|arithmetic|killed => killed|1", reason: "stale because the mutant is killed"},
+		{identity: "a.go|f|arithmetic|broken => broken|1", reason: "stale because the mutant is not viable"},
+		{identity: "a.go|f|arithmetic|dead => dead|1", reason: "stale because the mutant is gone"},
 	}
 	updated := updateEntries(entries, mutants, nil)
-	found := make(map[string]entry, len(updated))
-	for _, item := range updated {
-		found[item.identity] = item
+	if len(updated) != 1 {
+		t.Fatalf("updated = %+v, want only the live entry", updated)
 	}
-	if _, ok := found["a.go|f|arithmetic|killed => killed|1"]; ok {
-		t.Fatal("a killed mutant's untriaged entry survived the update")
-	}
-	if _, ok := found["a.go|f|arithmetic|broken => broken|1"]; ok {
-		t.Fatal("a not-viable mutant's untriaged entry survived the update")
-	}
-	if found["a.go|f|arithmetic|kept => kept|1"].status != statusUntriaged {
-		t.Fatal("a live entry was dropped")
-	}
-	if found["a.go|f|arithmetic|dead => dead|1"].reason != "cannot be observed" {
-		t.Fatal("a justified entry or its reason was dropped")
-	}
-	for _, identity := range []string{"a.go|f|arithmetic|new => new|1", "a.go|f|statement deletion|never => <deleted>|1"} {
-		if found[identity].status != statusUntriaged {
-			t.Fatalf("new survivor %q was not recorded as untriaged", identity)
-		}
-	}
-	if len(updated) != 4 {
-		t.Fatalf("updated %d entries, want 4: %+v", len(updated), updated)
+	if updated[0].identity != "a.go|f|arithmetic|kept => kept|1" ||
+		updated[0].reason != "no reachable input distinguishes it" {
+		t.Fatalf("kept entry lost its identity or reason: %+v", updated[0])
 	}
 }
 
-func TestUpdateEntriesLeavesOtherFilesAloneUnderScope(t *testing.T) {
+func TestRemoveStaleEntriesNeverAddsUnlistedSurvivors(t *testing.T) {
+	t.Parallel()
+	mutants := []*mutation{
+		makeMutant("a.go", "f|arithmetic|new => new|1", outcomeSurvived),
+		makeMutant("a.go", "f|statement deletion|never => <deleted>|1", outcomeNeverExecuted),
+	}
+	updated := updateEntries(nil, mutants, nil)
+	if len(updated) != 0 {
+		t.Fatalf("updated = %+v, want no entries because -update must not record survivors", updated)
+	}
+}
+
+func TestRemoveStaleEntriesLeavesOtherFilesAloneUnderScope(t *testing.T) {
 	t.Parallel()
 	mutants := []*mutation{makeMutant("b.go", "f|arithmetic|x + 1 => x - 1|1", outcomeKilled)}
-	entries := []entry{{status: statusUntriaged, identity: "b.go|f|arithmetic|old => old|1"}}
+	entries := []entry{{identity: "b.go|f|arithmetic|old => old|1", reason: "justified reason"}}
 	updated := updateEntries(entries, mutants, []string{"a.go"})
 	if len(updated) != 1 || updated[0].identity != "b.go|f|arithmetic|old => old|1" {
 		t.Fatalf("out-of-scope entry changed: %+v", updated)
@@ -181,7 +176,7 @@ func TestReportGatePassesAndFails(t *testing.T) {
 		if status := reportGate(&output, nil, nil, nil); status != exitSuccess {
 			t.Fatalf("status = %d, want %d", status, exitSuccess)
 		}
-		if !strings.Contains(output.String(), "every surviving mutant is listed or justified") {
+		if !strings.Contains(output.String(), "every surviving mutant is a justified exception") {
 			t.Fatalf("pass message = %q", output.String())
 		}
 	})
@@ -189,8 +184,8 @@ func TestReportGatePassesAndFails(t *testing.T) {
 		t.Parallel()
 		survivor := makeMutant("a.go", "f|arithmetic|x + 1 => x - 1|1", outcomeSurvived)
 		never := makeMutant("a.go", "f|statement deletion|z++ => <deleted>|1", outcomeNeverExecuted)
-		stale := entry{status: statusUntriaged, identity: survivor.identity}
-		unknown := entry{status: statusUntriaged, identity: "a.go|f|arithmetic|gone => gone|1"}
+		stale := entry{identity: survivor.identity, reason: "this reason no longer holds"}
+		unknown := entry{identity: "a.go|f|arithmetic|gone => gone|1", reason: "justified reason"}
 		var output bytes.Buffer
 		status := reportGate(&output, []*mutation{survivor, never}, []entry{stale, unknown},
 			map[string]*mutation{survivor.identity: survivor})
@@ -203,13 +198,28 @@ func TestReportGatePassesAndFails(t *testing.T) {
 			"location: a.go:10",
 			"before: before",
 			"after:  after",
-			"stale exception: " + survivor.identity + " [untriaged] (a.go:10)",
+			"kill each mutant with a test, or add <identity><TAB><reason> by hand for Standards review",
+			"stale exception: " + survivor.identity + " (a.go:10)",
 			"stale exception: " + unknown.identity,
 			"2 unlisted mutant(s), 2 stale exception(s)",
 		} {
 			if !strings.Contains(output.String(), wanted) {
 				t.Fatalf("report %q does not contain %q", output.String(), wanted)
 			}
+		}
+	})
+	t.Run("stale only", func(t *testing.T) {
+		t.Parallel()
+		stale := entry{identity: "a.go|f|arithmetic|gone => gone|1", reason: "the mutant is gone"}
+		var output bytes.Buffer
+		if status := reportGate(&output, nil, []entry{stale}, nil); status != exitFailure {
+			t.Fatalf("status = %d, want %d", status, exitFailure)
+		}
+		if strings.Contains(output.String(), "kill each mutant") {
+			t.Fatalf("stale-only report offered advice for a missing mutant: %q", output.String())
+		}
+		if !strings.Contains(output.String(), "stale exception: "+stale.identity) {
+			t.Fatalf("stale-only report = %q", output.String())
 		}
 	})
 }

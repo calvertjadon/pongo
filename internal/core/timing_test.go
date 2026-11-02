@@ -1,6 +1,7 @@
 package core_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/calvertjadon/pongo/internal/core"
@@ -75,6 +76,40 @@ func TestCountdownLeftoverTimeNeverReachesTheRally(t *testing.T) {
 	if leftover != exact || leftoverEffect != exactEffect {
 		t.Errorf("a final step with half a step left over gave %+v and %+v, want the exact launch %+v and %+v",
 			leftover, leftoverEffect, exact, exactEffect)
+	}
+}
+
+// TestNegativeElapsedCompletionAddsNothing checks that a completion reporting time that ran backwards neither spends a
+// step nor corrupts the sequence: later completions land exactly as they would if it had never arrived.
+func TestNegativeElapsedCompletionAddsNothing(t *testing.T) {
+	t.Parallel()
+
+	phase := rallySequence(t)
+
+	// The magnitude would reverse ninety accumulated steps, far more than any carry a sequence holds.
+	reversed, effect := core.Update(
+		phase.model,
+		core.EventElapsed{Elapsed: -10 * core.ElapsedLimit, Token: phase.token},
+	)
+	if reversed != phase.model {
+		t.Fatalf("a completion of negative elapsed changed the rally from %+v to %+v", phase.model, reversed)
+	}
+	assertScheduled(t, effect, phase.token)
+
+	later := []core.Event{
+		core.EventElapsed{Elapsed: core.ElapsedLimit, Token: phase.token},
+		core.EventElapsed{Elapsed: core.StepDuration / 2, Token: phase.token},
+		core.EventElapsed{Elapsed: core.StepDuration / 2, Token: phase.token},
+		core.EventElapsed{Elapsed: core.StepDuration, Token: phase.token},
+	}
+	afterNegative, negativeEffects := replayFrom(reversed, later)
+	withoutNegative, plainEffects := replayFrom(phase.model, later)
+	if afterNegative != withoutNegative {
+		t.Fatalf("later completions after a negative one gave %+v, want the replay without it %+v",
+			afterNegative, withoutNegative)
+	}
+	if !slices.Equal(negativeEffects, plainEffects) {
+		t.Fatalf("later completions after a negative one requested %+v, want %+v", negativeEffects, plainEffects)
 	}
 }
 

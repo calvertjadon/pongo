@@ -332,7 +332,7 @@ func inScope(scope []string, file string) bool {
 	return false
 }
 
-// runMutants measures each package, marks unexecuted mutants, then runs the rest in parallel.
+// runMutants measures each package, marks the mutants coverage proves unexecuted, then runs the rest in parallel.
 func runMutants(env environment, packages []*pkgInfo, mutants []*mutation) error {
 	for _, pkg := range packages {
 		if err := runBaseline(env, pkg); err != nil {
@@ -340,7 +340,7 @@ func runMutants(env environment, packages []*pkgInfo, mutants []*mutation) error
 		}
 	}
 	for _, mutant := range mutants {
-		if !covered(mutant.pkg.blocks[mutant.file], mutant.line, mutant.col) {
+		if provenUnexecuted(mutant.pkg.blocks[mutant.file], mutant.line, mutant.col) {
 			mutant.outcome = outcomeNeverExecuted
 		}
 	}
@@ -587,15 +587,22 @@ func parsePoint(text string) (int, int, error) {
 	return line, col, nil
 }
 
-// covered reports whether some executed block contains the position.
-func covered(blocks []coverBlock, line, col int) bool {
+// provenUnexecuted reports whether coverage proves the position never ran: some block containing it has a zero count and
+// no block containing it executed. Go's profile records no block at all for switch case expressions and package-level
+// initializers, so a position in no block is not proof and its mutant is run.
+func provenUnexecuted(blocks []coverBlock, line, col int) bool {
+	contained := false
 	for _, block := range blocks {
-		if block.count > 0 && block.contains(line, col) {
-			return true
+		if !block.contains(line, col) {
+			continue
 		}
+		if block.count > 0 {
+			return false
+		}
+		contained = true
 	}
 
-	return false
+	return contained
 }
 
 func (b coverBlock) contains(line, col int) bool {

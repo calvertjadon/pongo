@@ -102,30 +102,34 @@ func (failingReader) Read([]byte) (int, error) {
 	return 0, errors.New("read failure")
 }
 
-func TestCoveredPositions(t *testing.T) {
+func TestProvenUnexecutedPositions(t *testing.T) {
 	t.Parallel()
 	blocks := []coverBlock{
 		{startLine: 4, startCol: 2, endLine: 6, endCol: 1, count: 1},
 		{startLine: 8, startCol: 2, endLine: 8, endCol: 11, count: 0},
+		{startLine: 10, startCol: 2, endLine: 12, endCol: 1, count: 0},
+		{startLine: 11, startCol: 2, endLine: 13, endCol: 1, count: 1},
 	}
 	cases := []struct {
 		line, col int
 		want      bool
 	}{
-		{4, 2, true},
-		{5, 10, true},
-		{6, 1, true},
+		{4, 2, false},
+		{5, 10, false},
+		{6, 1, false},
 		{6, 2, false},
 		{3, 5, false},
-		{8, 5, false},
+		{8, 5, true},
+		{10, 5, true},
+		{11, 5, false},
 	}
 	for _, testCase := range cases {
-		if got := covered(blocks, testCase.line, testCase.col); got != testCase.want {
-			t.Fatalf("covered(%d, %d) = %t, want %t", testCase.line, testCase.col, got, testCase.want)
+		if got := provenUnexecuted(blocks, testCase.line, testCase.col); got != testCase.want {
+			t.Fatalf("provenUnexecuted(%d, %d) = %t, want %t", testCase.line, testCase.col, got, testCase.want)
 		}
 	}
-	if covered(nil, 1, 1) {
-		t.Fatal("an empty profile reported coverage")
+	if provenUnexecuted(nil, 1, 1) {
+		t.Fatal("an empty profile proved a position unexecuted")
 	}
 }
 

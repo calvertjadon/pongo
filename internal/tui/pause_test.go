@@ -152,6 +152,55 @@ func TestResumeCountdownKeepsTheFrozenBallVisible(t *testing.T) {
 	}
 }
 
+// TestPauseBoxKeepsItsBordersAndHidesTheCourtItCovers pins the pause box: an intact border exactly its own size, an
+// opaque interior, and no drawing outside it.
+func TestPauseBoxKeepsItsBordersAndHidesTheCourtItCovers(t *testing.T) {
+	t.Parallel()
+
+	model, token := beginRally(t, core.ModeLocalTwoPlayer)
+	for range 20 {
+		model, _ = core.Update(model, core.EventElapsed{Elapsed: core.StepDuration, Token: token})
+	}
+	court := lines(tui.Render(model, 80, 28))
+	paused, _ := core.Update(model, core.EventPauseToggle{})
+	frame := lines(tui.Render(paused, 80, 28))
+
+	top, left := pauseFrameTop, pauseFrameLeft
+	border := "+" + strings.Repeat("-", pauseOverlayWidth-2) + "+"
+	for _, row := range []int{top, top + pauseOverlayHeight - 1} {
+		if frame[row][left] != '+' || frame[row][left+pauseOverlayWidth-1] != '+' {
+			t.Errorf("pause box corners at row %d = %q and %q, want +",
+				row, frame[row][left], frame[row][left+pauseOverlayWidth-1])
+		}
+		if frame[row][left-1] != court[row][left-1] ||
+			frame[row][left+pauseOverlayWidth] != court[row][left+pauseOverlayWidth] {
+			t.Errorf("pause box border at row %d is drawn outside its %d columns", row, pauseOverlayWidth)
+		}
+	}
+	if got := frame[top+pauseOverlayHeight-1][left : left+pauseOverlayWidth]; got != border {
+		t.Errorf("pause box bottom border = %q, want %q", got, border)
+	}
+	for row := top + 1; row < top+pauseOverlayHeight-1; row++ {
+		if cell := frame[row][left]; cell != '|' {
+			t.Errorf("pause box left wall at row %d = %q, want |", row, cell)
+		}
+		if cell := frame[row][left+pauseOverlayWidth-1]; cell != '|' {
+			t.Errorf("pause box right wall at row %d = %q, want |", row, cell)
+		}
+	}
+	// The box hides the court's dashed center line where it covers it.
+	for _, row := range []int{top + 1, top + 3, top + 5, top + 7} {
+		if cell := frame[row][frameCenterCol]; cell != ' ' {
+			t.Errorf("court cell under the pause box at row %d = %q, want blank", row, cell)
+		}
+	}
+	for _, row := range []int{top - 1, top + pauseOverlayHeight} {
+		if frame[row] != court[row] {
+			t.Errorf("row %d outside the pause box changed from %q to %q", row, court[row], frame[row])
+		}
+	}
+}
+
 func TestPauseOverlayCentersWithOddSurplus(t *testing.T) {
 	t.Parallel()
 

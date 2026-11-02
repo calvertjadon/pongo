@@ -108,6 +108,9 @@ func assertFinishedMatch(t *testing.T, finished core.Model, winner core.Side, wa
 	if remaining := finished.CountdownRemaining(); remaining != 0 {
 		t.Errorf("countdown after the winning point = %d steps, want none", remaining)
 	}
+	if feedback := finished.Feedback(); feedback != core.FeedbackNone {
+		t.Errorf("feedback after the winning point = %v, want none", feedback)
+	}
 	if x, y := finished.BallPosition(); x != 34.5 || y != 9.5 {
 		t.Errorf("ball after the winning point = (%v, %v), want the resting court center", x, y)
 	}
@@ -497,4 +500,35 @@ func hitRow(vertical core.VerticalDirection) uint8 {
 	}
 
 	return paddleStartTop
+}
+
+// TestRematchSeedsTheComputerWithTheNextChainPosition pins that a rematch advances the chain position the computer's
+// error draws are seeded from. The first rematch is chain position 1, and Hard's position-1 draw settles the paddle on
+// row 14 (downward serve) or row 6 (upward serve); a chain position left at 0 or wrapped backwards settles it two rows
+// toward the center, on row 12 or 4.
+func TestRematchSeedsTheComputerWithTheNextChainPosition(t *testing.T) {
+	t.Parallel()
+
+	started, schedule := startComputerMatch(t, core.DifficultyHard)
+	rally, token := beginServingRally(t, started, schedule.Timer().Token)
+	finished := playToGameOver(t, rally, token)
+
+	rematch, effect := core.Update(finished, core.EventPrimary{})
+	if rematch.MatchPhase() != core.MatchPhaseCountdown || effect.Kind() != core.EffectScheduleTimer {
+		t.Fatalf("rematch gave phase %v and effect %v, want a countdown", rematch.MatchPhase(), effect.Kind())
+	}
+
+	// Put the human paddle in the rematch serve's path so the ball reaches the computer.
+	serve := rematch.NextServe()
+	rematch = setPaddleTop(t, rematch, false, hitRow(serve.Vertical))
+	serving, servingToken := beginServingRally(t, rematch, effect.Timer().Token)
+	model := serving
+	for range 200 {
+		model = nextComputerStep(t, model, servingToken)
+	}
+
+	want := map[core.VerticalDirection]uint8{core.DirectionUp: 6, core.DirectionDown: 14}[serve.Vertical]
+	if _, top := model.PaddleTops(); top != want {
+		t.Errorf("computer paddle after the first rematch = %d, want the position-1 draw's row %d", top, want)
+	}
 }

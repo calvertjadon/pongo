@@ -185,6 +185,75 @@ func TestPauseAndResumeRestartTheReactionDelay(t *testing.T) {
 	t.Fatal("the resumed approach never re-aimed")
 }
 
+// TestServeLaunchDrawsTheComputerApproachError pins that a serve travelling toward the computer opens its approach,
+// and draws that approach's error, when the countdown launches it: a pause taken at that instant must not skip the
+// draw. Easy aims at the row the ball has reached, so the row its paddle settles on shows which error the approach
+// is using. The serve draws the seed's first offset, about -0.13, and the approach the human's return opens must
+// draw the second, about -3.19, which holds the aim near row 4; a match that never drew at the launch reuses the
+// first offset for the return, keeps the aim near row 7, and settles two rows lower on screen, on row 6.
+func TestServeLaunchDrawsTheComputerApproachError(t *testing.T) {
+	t.Parallel()
+
+	model, _ := computerRally(t, core.DifficultyEasy)
+
+	// Pause at the launch, before the serve's first rally step, and resume: the approach the launch opened, and the
+	// error it drew, must survive the pause.
+	model, _ = core.Update(model, core.EventPauseToggle{})
+	resumed, effect := core.Update(model, core.EventPauseToggle{})
+	if effect.Kind() != core.EffectScheduleTimer {
+		t.Fatalf("resume requested %v, want the resume countdown's timer", effect.Kind())
+	}
+	token := effect.Timer().Token
+
+	// Row 4 is the row the serve's return reaches the human paddle at, so a paddle parked there returns the ball
+	// without steering.
+	for resumed.MatchPhase() == core.MatchPhaseCountdown {
+		if left, _ := resumed.PaddleTops(); left > 4 {
+			resumed, _ = core.Update(resumed, core.EventPaddleStep{Group: core.BindingWS, Direction: core.DirectionUp})
+		}
+		var next core.Effect
+		resumed, next = core.Update(resumed, core.EventElapsed{Elapsed: core.StepDuration, Token: token})
+		if next.Kind() == core.EffectScheduleTimer {
+			token = next.Timer().Token
+		}
+	}
+
+	// Follow the ball until the human's return is inbound past the court's center, where the computer's second
+	// approach has settled its paddle: the computer's return reverses the ball once, and the human's reverses it
+	// back.
+	previousX, _ := resumed.BallPosition()
+	direction := 0.0
+	returns := 0
+	settled := false
+	for range 600 {
+		var next core.Effect
+		resumed, next = core.Update(resumed, core.EventElapsed{Elapsed: core.StepDuration, Token: token})
+		if next.Kind() == core.EffectScheduleTimer {
+			token = next.Timer().Token
+		}
+		x, _ := resumed.BallPosition()
+		delta := x - previousX
+		previousX = x
+		if delta != 0 {
+			if direction != 0 && (delta > 0) != (direction > 0) {
+				returns++
+			}
+			direction = delta
+		}
+		if returns >= 2 && x >= core.CourtWidth/2 {
+			settled = true
+			break
+		}
+	}
+	if !settled {
+		t.Fatal("the human's return never reached the court's center")
+	}
+
+	if _, top := resumed.PaddleTops(); top != 4 {
+		t.Errorf("computer paddle as the return crossed the center = %d, want the fresh draw's row 4", top)
+	}
+}
+
 func TestRestartReplaysTheComputerTrajectory(t *testing.T) {
 	t.Parallel()
 

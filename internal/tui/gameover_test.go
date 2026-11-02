@@ -52,6 +52,23 @@ func TestGameOverOverlayShowsTheWinnerAndFinalScore(t *testing.T) {
 	}
 }
 
+// TestGameOverResultTextIsCenteredInTheOverlay pins the overlay's centered winner and score lines.
+func TestGameOverResultTextIsCenteredInTheOverlay(t *testing.T) {
+	t.Parallel()
+
+	frame := lines(tui.Render(playedToGameOver(t), 80, 28))
+	width := frameGameOverRight - frameGameOverLeft + 1
+	for _, text := range []string{"PLAYER 1 WINS", "7  -  0"} {
+		row, column := locate(frame, text)
+		if row < 0 {
+			t.Fatalf("the overlay does not show %q", text)
+		}
+		if want := frameGameOverLeft + (width-len(text))/2; column != want {
+			t.Errorf("%q starts at column %d, want %d in the %d-column box", text, column, want, width)
+		}
+	}
+}
+
 func TestGameOverHidesTheBallAndKeepsTheFinalCourt(t *testing.T) {
 	t.Parallel()
 

@@ -132,3 +132,46 @@ func pausedMatch(t *testing.T) core.Model {
 
 	return paused
 }
+
+// TestBallVisibilityFollowsTheMatchPhase pins when the court draws the ball: never outside a match, through a rally,
+// while paused, and through the resume countdown that continues a frozen rally, but not during a serve countdown or
+// after the match has finished.
+func TestBallVisibilityFollowsTheMatchPhase(t *testing.T) {
+	t.Parallel()
+
+	if core.NewModel().BallVisible() {
+		t.Error("the ball is visible on the title, want it hidden outside a match")
+	}
+	setup, _ := core.Update(core.NewModel(), core.EventPrimary{})
+	if setup.BallVisible() {
+		t.Error("the ball is visible in Match setup, want it hidden outside a match")
+	}
+
+	countdown, _ := openingCountdown(t)
+	if countdown.BallVisible() {
+		t.Error("the ball is visible during a serve countdown, want it hidden until the serve starts")
+	}
+
+	rally, token := beginRally(t, core.ModeLocalTwoPlayer)
+	if !rally.BallVisible() {
+		t.Error("the ball is hidden during a rally, want it visible")
+	}
+	paused, _ := core.Update(rally, core.EventPauseToggle{})
+	if !paused.BallVisible() {
+		t.Error("the ball is hidden while paused, want the frozen court to keep it")
+	}
+	resumed, effect := core.Update(paused, core.EventPauseToggle{})
+	if resumed.MatchPhase() != core.MatchPhaseCountdown {
+		t.Fatalf("resume gave phase %v, want a countdown", resumed.MatchPhase())
+	}
+	if !resumed.BallVisible() {
+		t.Error("the ball is hidden during a resume countdown, want the frozen rally's ball to stay visible")
+	}
+	if effect.Timer().Token == token {
+		t.Error("the resume countdown reused the frozen rally's timing sequence")
+	}
+
+	if finishedMatch(t).BallVisible() {
+		t.Error("the ball is visible after the match finished, want it hidden on Game over")
+	}
+}

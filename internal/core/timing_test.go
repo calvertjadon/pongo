@@ -1,6 +1,7 @@
 package core_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/calvertjadon/pongo/internal/core"
@@ -75,6 +76,40 @@ func TestCountdownLeftoverTimeNeverReachesTheRally(t *testing.T) {
 	if leftover != exact || leftoverEffect != exactEffect {
 		t.Errorf("a final step with half a step left over gave %+v and %+v, want the exact launch %+v and %+v",
 			leftover, leftoverEffect, exact, exactEffect)
+	}
+}
+
+// TestNegativeElapsedCompletionAddsNothing checks that a completion reporting time that ran backwards neither spends a
+// step nor corrupts the sequence: later completions land exactly as they would if it had never arrived.
+func TestNegativeElapsedCompletionAddsNothing(t *testing.T) {
+	t.Parallel()
+
+	phase := rallySequence(t)
+
+	// The magnitude would reverse ninety accumulated steps, far more than any carry a sequence holds.
+	reversed, effect := core.Update(
+		phase.model,
+		core.EventElapsed{Elapsed: -10 * core.ElapsedLimit, Token: phase.token},
+	)
+	if reversed != phase.model {
+		t.Fatalf("a completion of negative elapsed changed the rally from %+v to %+v", phase.model, reversed)
+	}
+	assertScheduled(t, effect, phase.token)
+
+	later := []core.Event{
+		core.EventElapsed{Elapsed: core.ElapsedLimit, Token: phase.token},
+		core.EventElapsed{Elapsed: core.StepDuration / 2, Token: phase.token},
+		core.EventElapsed{Elapsed: core.StepDuration / 2, Token: phase.token},
+		core.EventElapsed{Elapsed: core.StepDuration, Token: phase.token},
+	}
+	afterNegative, negativeEffects := replayFrom(reversed, later)
+	withoutNegative, plainEffects := replayFrom(phase.model, later)
+	if afterNegative != withoutNegative {
+		t.Fatalf("later completions after a negative one gave %+v, want the replay without it %+v",
+			afterNegative, withoutNegative)
+	}
+	if !slices.Equal(negativeEffects, plainEffects) {
+		t.Fatalf("later completions after a negative one requested %+v, want %+v", negativeEffects, plainEffects)
 	}
 }
 
@@ -191,4 +226,35 @@ func finishedMatch(t *testing.T) core.Model {
 	return playedMatch(t, core.Settings{
 		Mode: core.ModeLocalTwoPlayer, WinningScore: core.WinningScore5, Difficulty: core.DifficultyNormal,
 	}, core.SideLeft)
+}
+
+// TestEverySessionTimingSequenceGetsAFreshNonZeroToken pins the timer-token contract: each timing sequence the session
+// starts has a token of its own that is never zero, so a completion can never be confused with the zero value or with
+// an earlier sequence's completion.
+func TestEverySessionTimingSequenceGetsAFreshNonZeroToken(t *testing.T) {
+	t.Parallel()
+
+	model, schedule := openingCountdown(t)
+	seen := make(map[core.TimerToken]bool)
+	record := func(token core.TimerToken) {
+		t.Helper()
+
+		if token == 0 {
+			t.Fatal("timing sequence token = 0, want a token that never identifies a sequence")
+		}
+		if seen[token] {
+			t.Fatalf("timing sequence token %d was issued twice in one session", token)
+		}
+		seen[token] = true
+	}
+
+	record(schedule.Timer().Token)
+	rally, rallyToken := beginServingRally(t, model, schedule.Timer().Token)
+	record(rallyToken)
+
+	_, effect := runUntilPoint(t, rally, rallyToken, [2]uint8{1, 0})
+	if effect.Kind() != core.EffectScheduleTimer {
+		t.Fatalf("the point requested %v, want the next countdown's timer", effect.Kind())
+	}
+	record(effect.Timer().Token)
 }

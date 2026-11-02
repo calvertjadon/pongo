@@ -3,6 +3,7 @@ package main_test
 import (
 	"bytes"
 	"errors"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -119,12 +120,41 @@ func reportedVersion(t *testing.T, executable string) string {
 	return version
 }
 
+// e2eCoverDirectoryEnvironment names the directory the end-to-end tests make the coverage-instrumented executable write
+// its counters to.
+const e2eCoverDirectoryEnvironment = "PONGO_E2E_COVERDIR"
+
+// coverageBuildFlags returns the build flags that instrument the executable for end-to-end coverage, if requested.
+func coverageBuildFlags() []string {
+	if os.Getenv(e2eCoverDirectoryEnvironment) == "" {
+		return nil
+	}
+
+	return []string{"-cover", "-coverpkg=./..."}
+}
+
+// processEnvironment returns the test environment plus the coverage directory for the instrumented executable.
+func processEnvironment() []string {
+	environment := os.Environ()
+	if directory := os.Getenv(e2eCoverDirectoryEnvironment); directory != "" {
+		environment = append(environment, "GOCOVERDIR="+directory)
+	}
+
+	return environment
+}
+
 // buildPongo compiles the executable under test into a temporary directory.
 func buildPongo(t *testing.T, buildFlags ...string) string {
 	t.Helper()
 
 	executable := filepath.Join(t.TempDir(), "pongo")
-	arguments := append([]string{"build"}, buildFlags...)
+	if directory := os.Getenv(e2eCoverDirectoryEnvironment); directory != "" {
+		if err := os.MkdirAll(directory, 0o777); err != nil {
+			t.Fatalf("create coverage directory: %v", err)
+		}
+	}
+	arguments := append([]string{"build"}, coverageBuildFlags()...)
+	arguments = append(arguments, buildFlags...)
 	arguments = append(arguments, "-o", executable, ".")
 	if output, err := exec.Command("go", arguments...).CombinedOutput(); err != nil {
 		t.Fatalf("go build: %v\n%s", err, output)
@@ -139,6 +169,7 @@ func runWithoutTerminal(t *testing.T, executable string, arguments ...string) ou
 
 	var stdout, stderr bytes.Buffer
 	command := exec.Command(executable, arguments...)
+	command.Env = processEnvironment()
 	command.Stdout = &stdout
 	command.Stderr = &stderr
 

@@ -65,6 +65,41 @@ func TestMatchFitsMinimumTerminal(t *testing.T) {
 	}
 }
 
+// TestMatchDrawsTheCourtBordersWallsAndCenterLine pins the fixed court grid: both borders, solid side walls, and a
+// dashed center line at the court's own rows and columns.
+func TestMatchDrawsTheCourtBordersWallsAndCenterLine(t *testing.T) {
+	t.Parallel()
+
+	model, _ := startMatch(t, core.ModeLocalTwoPlayer)
+	frame := lines(tui.Render(model, 80, 28))
+
+	border := "+" + strings.Repeat("-", core.CourtWidth) + "+"
+	for _, row := range []int{frameCourtRow, frameCourtRow + core.CourtHeight + 1} {
+		if got := frame[row][frameCourtLeft : frameCourtLeft+len(border)]; got != border {
+			t.Errorf("court border at row %d = %q, want %q", row, got, border)
+		}
+	}
+	for row := frameCourtRow + 1; row <= frameCourtRow+core.CourtHeight; row++ {
+		if cell := frame[row][frameCourtLeft]; cell != '|' {
+			t.Errorf("left court wall at row %d = %q, want |", row, cell)
+		}
+		if cell := frame[row][frameCourtLeft+core.CourtWidth+1]; cell != '|' {
+			t.Errorf("right court wall at row %d = %q, want |", row, cell)
+		}
+	}
+	for y := 0; y < core.CourtHeight; y += 2 {
+		if y == core.CourtHeight/2 {
+			continue // the opening countdown digit covers this center mark
+		}
+		if cell := frame[frameCourtRow+1+y][frameCenterCol]; cell != ':' {
+			t.Errorf("center mark at court row %d = %q, want :", y, cell)
+		}
+	}
+	if cell := frame[frameCourtRow+2][frameCenterCol]; cell != ' ' {
+		t.Errorf("court row 1 = %q, want the center line dashed", cell)
+	}
+}
+
 func TestMatchCentersFixedLayoutWithOddSurplus(t *testing.T) {
 	t.Parallel()
 

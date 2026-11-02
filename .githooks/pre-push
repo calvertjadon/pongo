@@ -1,0 +1,52 @@
+#!/bin/sh
+# Refuse a push unless the automated gate passes on the exact commits being pushed.
+set -eu
+
+root=$(git rev-parse --show-toplevel)
+worktree=
+tmpdir=
+
+remove_worktree() {
+	if [ -n "$worktree" ]; then
+		git -C "$root" worktree remove --force "$worktree" >/dev/null 2>&1 || rm -rf "$worktree"
+		worktree=
+	fi
+	if [ -n "$tmpdir" ]; then
+		rm -rf "$tmpdir"
+		tmpdir=
+	fi
+}
+trap remove_worktree EXIT
+
+refuse() {
+	echo "pre-push: push refused: $1" >&2
+	exit 1
+}
+
+gate_commit() {
+	if ! git -C "$root" cat-file -e "$1:scripts/gate.sh" 2>/dev/null; then
+		refuse "$1 has no scripts/gate.sh, so the gate cannot run for it"
+	fi
+
+	tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/pongo-gate.XXXXXX")
+	worktree="$tmpdir/tree"
+	if ! add_output=$(git -C "$root" worktree add --detach "$worktree" "$1" 2>&1); then
+		printf '%s\n' "$add_output" >&2
+		refuse "could not create a worktree for $1"
+	fi
+
+	if ! "$worktree/scripts/gate.sh" </dev/null; then
+		refuse "the gate failed on $1"
+	fi
+
+	remove_worktree
+}
+
+while read -r local_ref local_sha remote_ref remote_sha || [ -n "${local_ref-}" ]; do
+	# An all-zero local SHA is a branch deletion; there is nothing to gate.
+	case "$local_sha" in
+	*[!0]*) gate_commit "$local_sha" ;;
+	esac
+done
+
+exit 0

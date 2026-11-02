@@ -25,20 +25,9 @@ These rules apply to every Pongo build ticket.
 
 ## Formatting and static analysis
 
-Use golangci-lint v2.13.2 with `.golangci.yml`. The configuration enables `goimports` and `golines` with a 120-column target. It enables Staticcheck `SA*` checks, `errcheck`, `errorlint`, `exhaustive`, `gochecksumtype`, `gocognit`, `gocritic`, `godoclint`, `funlen`, `ineffassign`, `nilerr`, `nolintlint`, `predeclared`, `revive`, `unused`, and `whitespace`. Run `go vet` separately.
+Use the golangci-lint version pinned in `tools/go.mod` with `.golangci.yml`. The configuration enables `goimports` and `golines` with a 120-column target. It enables Staticcheck `SA*` checks, `errcheck`, `errorlint`, `exhaustive`, `gochecksumtype`, `gocognit`, `gocritic`, `godoclint`, `funlen`, `ineffassign`, `nilerr`, `nolintlint`, `predeclared`, `revive`, `unused`, and `whitespace`.
 
-Run this gate from the repository root:
-
-```sh
-golangci-lint fmt --diff --config=.golangci.yml
-go mod tidy -diff
-go vet ./...
-golangci-lint run --config=.golangci.yml ./...
-go test -race -cover ./...
-go build ./...
-```
-
-Every command must exit with status 0. The formatter must print no diff.
+Run `./scripts/gate.sh` from the repository root. It runs the format check, the tidy checks, `go vet`, the lint pass, race tests with coverage, the CRAP ceiling check, and the build, and exits 0 only when every step passes and the formatter prints no diff.
 
 ## Deterministic tests
 
@@ -48,7 +37,14 @@ Every command must exit with status 0. The formatter must print no diff.
 - Core tests must not start Bubble Tea, read a clock, use ambient randomness, sleep, or depend on timing tolerances.
 - Replaying identical inputs must produce identical state and effects.
 - Cover boundaries, invariants, transitions, invalid and stale events, effect correlation, collision ordering, reset rules, and ticket-specific failure cases when they become reachable.
-- Do not gate on a coverage percentage. Record coverage output and judge whether tests catch the plausible failures named by the ticket.
+- Every function's CRAP score must be at most 12, where CRAP = complexity² × (1 − coverage)³ + complexity. Complexity is cyclomatic, and coverage is the function's statement coverage counted across packages and through the coverage-instrumented binary the end-to-end tests run. The ceiling is the gate and there are no exemptions.
+- Raw coverage percentage is still not a gate. Record coverage output and judge whether tests catch the plausible failures named by the ticket.
+
+## Mutation testing
+
+Run `./scripts/mutation.sh` from the repository root. It edits each non-test Go file of `internal/core` and `internal/tui` one mutation at a time, runs that package's own tests against the mutant through a build overlay, and fails when a surviving or never-executed mutant is not a justified exception in `mutation/exceptions.txt`. A local iteration can name files with `-files internal/core/timing.go`; CI mutates everything.
+
+The Core and the Shell have zero surviving or never-executed mutants apart from justified exceptions. An exception is one line in `mutation/exceptions.txt`, `<identity><TAB><reason>`, where the reason shows the mutant is equivalent — no reachable input distinguishes it — or that pinning it would assert incidental detail, and is checkable against the code. Prefer killing the mutant with a test. To propose an exception, add the line by hand with its reason for Standards review; "hard to test" is not a reason. `./scripts/mutation.sh -update` only removes entries whose mutant is now killed, not viable or no longer generated, and never records a new survivor. The identity names the file, function, operator, before and after snippets, and an ordinal, so it survives unrelated edits and line shifts. Mutation testing runs as its own Linux CI job; `docs/adr/0002-mutation-testing.md` records the tool choice, test scope, and timeout policy.
 
 ## Interactive verification
 
@@ -63,6 +59,10 @@ Resolve `main`, then list `git log <merge-base>..HEAD --oneline` and review `git
 Run Standards and Spec as separate reviews. Standards receives this file, repository agent instructions, the fixed smell baseline, the commit list, and the exact diff command. Spec receives the full build ticket and comments, linked decisions, the commit list, and the same diff.
 
 A review blocks only on a problem introduced by the branch or a pre-existing problem that the branch materially worsens. Classify a concrete breach as Blocking. Classify a supported but uncertain concern as Question. Each Question must become Blocking or the reviewer must withdraw it with a reason.
+
+When the branch deletes or rewrites tests, name, for each removed or weakened assertion, the test at the candidate commit that fails on the same breakage. Statement coverage does not show this; a covered line can lose its only assertion. Classify a removed assertion that no remaining test replaces as Blocking. Classify one whose replacement you cannot confirm from the diff and the tests as Question.
+
+When the branch adds or changes an exception in `mutation/exceptions.txt`, Standards checks each reason against the code. A reason that is false, unverifiable, or covers a mutant a deterministic test could kill is Blocking.
 
 The learner fixes every Blocking finding. The agent does not patch the learner's branch. After a fix, rerun the complete automated gate and both reviews from `main` to the new candidate commit. Repeat interactive steps affected by the fix, or the complete checklist if behavior changed.
 

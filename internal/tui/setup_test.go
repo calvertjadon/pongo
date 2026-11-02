@@ -93,6 +93,48 @@ func TestSetupCentersFixedLayoutWithOddSurplus(t *testing.T) {
 	}
 }
 
+// TestSetupKeepsItsValueColumnAndBorderWidthForEveryDraft pins the form's fixed layout: one value column for every
+// editable row and one border width whatever the selected values are.
+func TestSetupKeepsItsValueColumnAndBorderWidthForEveryDraft(t *testing.T) {
+	t.Parallel()
+
+	single := lines(tui.Render(setup(), 80, 28))
+	twoPlayer := lines(tui.Render(setup(core.EventAdjust{Direction: core.DirectionRight}), 80, 28))
+
+	valueColumn := -1
+	for _, label := range []string{"Mode", "Winning score", "Computer difficulty"} {
+		column := strings.Index(rowOf(t, single, label), "<")
+		if column < 0 {
+			t.Fatalf("row %q has no editable value", label)
+		}
+		if valueColumn < 0 {
+			valueColumn = column
+		} else if column != valueColumn {
+			t.Errorf("row %q starts its value at column %d, want the form's column %d", label, column, valueColumn)
+		}
+	}
+
+	left, right := setupBorder(t, single)
+	if otherLeft, otherRight := setupBorder(t, twoPlayer); otherLeft != left || otherRight != right {
+		t.Errorf("form border spans columns %d to %d in two-player, want %d to %d in single player",
+			otherLeft, otherRight, left, right)
+	}
+}
+
+// setupBorder returns the first and last column of the setup form's ASCII border.
+func setupBorder(t *testing.T, frame []string) (left, right int) {
+	t.Helper()
+
+	for _, line := range frame {
+		if column := strings.Index(line, "+-"); column >= 0 {
+			return column, strings.LastIndex(line, "+")
+		}
+	}
+	t.Fatal("setup form has no border")
+
+	return 0, 0
+}
+
 func setup(events ...core.Event) core.Model {
 	model, _ := core.Update(core.NewModel(), core.EventPrimary{})
 	for _, event := range events {

@@ -15,3 +15,4 @@ Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents
 ### Automated gate
 
 Run `./scripts/gate.sh` from the repository root; see `CODING_STANDARDS.md`.
+Enable the versioned pre-push hook with `git config core.hooksPath .githooks` before pushing.

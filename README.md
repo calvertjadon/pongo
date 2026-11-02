@@ -229,6 +229,10 @@ rules. Every change must pass the automated gate, which CI runs on Linux and mac
 The script runs on the Go toolchain CI pins, downloading it on first use, and runs golangci-lint at the version pinned
 in [`tools/go.mod`](tools/go.mod), so nothing else needs installing.
 
+To run the gate before every push, enable the versioned hook once per clone with `git config core.hooksPath .githooks`.
+It checks out each commit being pushed into a throwaway worktree and runs `./scripts/gate.sh` there, refusing the push
+if any gate run fails.
+
 ### Demo recording
 
 [`docs/demo.gif`](docs/demo.gif) is recorded from [`docs/demo.tape`](docs/demo.tape) with

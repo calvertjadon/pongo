@@ -28,6 +28,7 @@ func TestGameRefusesToStartWithoutTerminal(t *testing.T) {
 
 		var stdout, stderr bytes.Buffer
 		command := exec.Command(pongo)
+		command.Env = processEnvironment()
 		command.Stdout = &stdout
 		command.Stderr = &stderr
 		// A new session has no controlling terminal, so nothing can fall back to /dev/tty.
@@ -42,6 +43,7 @@ func TestGameRefusesToStartWithoutTerminal(t *testing.T) {
 		before := terminal.state(t)
 		var stdout, stderr bytes.Buffer
 		command := exec.Command(pongo)
+		command.Env = processEnvironment()
 		command.Stdin = terminal.terminal
 		command.Stdout = &stdout
 		command.Stderr = &stderr
@@ -55,6 +57,7 @@ func TestGameRefusesToStartWithoutTerminal(t *testing.T) {
 		terminal := newPseudoTerminal(t, 80, 28)
 		var stderr bytes.Buffer
 		command := exec.Command(pongo)
+		command.Env = processEnvironment()
 		command.Stdout = terminal.terminal
 		command.Stderr = &stderr
 		// The pseudo-terminal becomes the controlling terminal, so /dev/tty would reach it.
@@ -280,7 +283,7 @@ func (pty *pseudoTerminal) startGame(t *testing.T, executable, directory string,
 	before := pty.state(t)
 	command := exec.Command(executable)
 	command.Dir = directory
-	command.Env = append(append(os.Environ(), "TERM=xterm-256color", "NO_COLOR=1"), overrides...)
+	command.Env = append(append(processEnvironment(), "TERM=xterm-256color", "NO_COLOR=1"), overrides...)
 	command.Stdin = pty.terminal
 	command.Stdout = pty.terminal
 	command.Stderr = pty.terminal

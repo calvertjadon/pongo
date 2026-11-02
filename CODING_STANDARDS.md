@@ -27,7 +27,7 @@ These rules apply to every Pongo build ticket.
 
 Use the golangci-lint version pinned in `tools/go.mod` with `.golangci.yml`. The configuration enables `goimports` and `golines` with a 120-column target. It enables Staticcheck `SA*` checks, `errcheck`, `errorlint`, `exhaustive`, `gochecksumtype`, `gocognit`, `gocritic`, `godoclint`, `funlen`, `ineffassign`, `nilerr`, `nolintlint`, `predeclared`, `revive`, `unused`, and `whitespace`.
 
-Run `./scripts/gate.sh` from the repository root. It runs the format check, the tidy checks, `go vet`, the lint pass, race tests with coverage, and the build, and exits 0 only when every step passes and the formatter prints no diff.
+Run `./scripts/gate.sh` from the repository root. It runs the format check, the tidy checks, `go vet`, the lint pass, race tests with coverage, the CRAP ceiling check, and the build, and exits 0 only when every step passes and the formatter prints no diff.
 
 ## Deterministic tests
 
@@ -37,7 +37,8 @@ Run `./scripts/gate.sh` from the repository root. It runs the format check, the 
 - Core tests must not start Bubble Tea, read a clock, use ambient randomness, sleep, or depend on timing tolerances.
 - Replaying identical inputs must produce identical state and effects.
 - Cover boundaries, invariants, transitions, invalid and stale events, effect correlation, collision ordering, reset rules, and ticket-specific failure cases when they become reachable.
-- Do not gate on a coverage percentage. Record coverage output and judge whether tests catch the plausible failures named by the ticket.
+- Every function's CRAP score must be at most 12, where CRAP = complexity² × (1 − coverage)³ + complexity. Complexity is cyclomatic, and coverage is the function's statement coverage counted across packages and through the coverage-instrumented binary the end-to-end tests run. The ceiling is the gate and there are no exemptions.
+- Raw coverage percentage is still not a gate. Record coverage output and judge whether tests catch the plausible failures named by the ticket.
 
 ## Interactive verification
 

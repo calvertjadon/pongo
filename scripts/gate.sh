@@ -34,7 +34,15 @@ echo "==> go tool golangci-lint run"
 go tool -modfile=tools/go.mod golangci-lint run --config=.golangci.yml ./...
 
 echo "==> go test -race -cover ./..."
-go test -race -cover ./...
+coverage=$(mktemp -d)
+trap 'rm -rf "$coverage"' 0
+mkdir -p "$coverage/e2e"
+export PONGO_E2E_COVERDIR="$coverage/e2e"
+go test -race -cover -coverpkg=./... -coverprofile="$coverage/unit.out" ./...
+
+echo "==> CRAP ceiling"
+go tool covdata textfmt -i="$coverage/e2e" -o="$coverage/e2e.out"
+go run ./internal/tools/crap "$coverage/unit.out" "$coverage/e2e.out"
 
 echo "==> go build ./..."
 go build ./...

@@ -40,6 +40,12 @@ Run `./scripts/gate.sh` from the repository root. It runs the format check, the 
 - Every function's CRAP score must be at most 12, where CRAP = complexity² × (1 − coverage)³ + complexity. Complexity is cyclomatic, and coverage is the function's statement coverage counted across packages and through the coverage-instrumented binary the end-to-end tests run. The ceiling is the gate and there are no exemptions.
 - Raw coverage percentage is still not a gate. Record coverage output and judge whether tests catch the plausible failures named by the ticket.
 
+## Mutation testing
+
+Run `./scripts/mutation.sh` from the repository root. It edits each non-test Go file of `internal/core` and `internal/tui` one mutation at a time, runs that package's own tests against the mutant through a build overlay, and fails when a surviving or never-executed mutant is not listed in `mutation/exceptions.txt`. A local iteration can name files with `-files internal/core/timing.go`; CI mutates everything.
+
+`mutation/exceptions.txt` holds one entry per line: `<status><TAB><identity><TAB><reason>`. An `untriaged` entry means nobody has judged the mutant yet; a `justified` entry requires a reason. Never delete an entry merely to make the job pass: kill the mutant with a test, or justify it. After an intentional change, `./scripts/mutation.sh -update` records new survivors as untriaged and drops untriaged entries whose mutant is now killed or gone. The identity names the file, function, operator, before and after snippets, and an ordinal, so it survives unrelated edits and line shifts. Mutation testing runs as its own Linux CI job; `docs/adr/0002-mutation-testing.md` records the tool choice, test scope, and timeout policy.
+
 ## Interactive verification
 
 After the automated gate, build and run the game at the candidate commit in a supported Linux or macOS TTY at 80 by 28 cells or larger.

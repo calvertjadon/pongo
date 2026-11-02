@@ -1,0 +1,221 @@
+# Mutation-testing exceptions, one mutant per line.
+#
+# Format: <status><TAB><identity><TAB><reason>
+#   untriaged  nobody has judged this mutant yet.
+#   justified  the reason explains why this mutant may survive.
+#
+# Regenerate survivors with ./scripts/mutation.sh -update. Never delete an entry merely to make the job pass:
+# kill the mutant with a test, or justify it with a reason.
+untriaged	internal/core/computer.go|(*computer).beginApproach|statement deletion|computer.aimed = false => <deleted>|1	
+untriaged	internal/core/computer.go|(*computer).beginApproach|statement deletion|computer.approachSteps = 0 => <deleted>|1	
+untriaged	internal/core/computer.go|(*computer).beginApproach|statement deletion|computer.error = computer.random.offset(profile.errorRows) => <deleted>|1	
+untriaged	internal/core/computer.go|(*computer).endApproach|boolean literal|false => true|1	
+untriaged	internal/core/computer.go|(*computer).endApproach|boolean literal|false => true|2	
+untriaged	internal/core/computer.go|(*computer).endApproach|statement deletion|computer.aim = 0 => <deleted>|1	
+untriaged	internal/core/computer.go|(*computer).endApproach|statement deletion|computer.aimed = false => <deleted>|1	
+untriaged	internal/core/computer.go|(*computer).endApproach|statement deletion|computer.approach = false => <deleted>|1	
+untriaged	internal/core/computer.go|(*computer).endApproach|statement deletion|computer.approachSteps = 0 => <deleted>|1	
+untriaged	internal/core/computer.go|(*computer).endApproach|statement deletion|computer.error = 0 => <deleted>|1	
+untriaged	internal/core/computer.go|(*computer).resume|boolean literal|true => false|1	
+untriaged	internal/core/computer.go|(*computer).resume|statement deletion|computer.aimed = false => <deleted>|1	
+untriaged	internal/core/computer.go|(*computer).resume|statement deletion|computer.approach = true => <deleted>|1	
+untriaged	internal/core/computer.go|(*computer).resume|statement deletion|computer.approachSteps = 0 => <deleted>|1	
+untriaged	internal/core/computer.go|(*computer).resume|statement deletion|computer.endApproach() => <deleted>|1	
+untriaged	internal/core/computer.go|(*computer).suspend|boolean literal|false => true|1	
+untriaged	internal/core/computer.go|(*computer).suspend|statement deletion|computer.aimed = false => <deleted>|1	
+untriaged	internal/core/computer.go|(*computer).suspend|statement deletion|computer.approachSteps = 0 => <deleted>|1	
+untriaged	internal/core/computer.go|(*matchState).moveComputer|arithmetic|top+paddleLastOffset => top - paddleLastOffset|1	
+untriaged	internal/core/computer.go|(*matchState).moveComputer|conditional boundary|target < float64(top) => target <= float64(top)|1	
+untriaged	internal/core/computer.go|(*matchState).moveComputer|conditional boundary|target > float64(top+paddleLastOffset) => target >= float64(top+paddleLastOffset)|1	
+untriaged	internal/core/computer.go|(*matchState).moveComputer|conditional negation|target < float64(top) => target >= float64(top)|1	
+untriaged	internal/core/computer.go|(*matchState).moveComputer|conditional negation|target > float64(top+paddleLastOffset) => target <= float64(top+paddleLastOffset)|1	
+untriaged	internal/core/computer.go|(*matchState).observeComputer|conditional boundary|match.ball.vx < 0 => match.ball.vx <= 0|1	
+untriaged	internal/core/computer.go|(*matchState).observeComputer|conditional negation|match.ball.vx < 0 => match.ball.vx >= 0|1	
+untriaged	internal/core/computer.go|(*matchState).resumeComputer|conditional boundary|match.ball.vx > 0 => match.ball.vx >= 0|1	
+untriaged	internal/core/computer.go|(*matchState).resumeComputer|conditional negation|match.ball.vx > 0 => match.ball.vx <= 0|1	
+untriaged	internal/core/computer.go|(*matchState).resumeComputer|statement deletion|match.computer.resume(match.ball.vx > 0) => <deleted>|1	
+untriaged	internal/core/computer.go|(*matchState).startServeApproach|conditional negation|match.serve.Horizontal == DirectionRight => match.serve.Horizontal != DirectionRight|1	
+untriaged	internal/core/computer.go|(*matchState).startServeApproach|statement deletion|match.computer.endApproach() => <deleted>|1	
+untriaged	internal/core/computer.go|(computer).due|arithmetic|computer.approachSteps-profile.reaction => computer.approachSteps + profile.reaction|1	
+untriaged	internal/core/computer.go|(computer).due|conditional negation|(computer.approachSteps-profile.reaction)%profile.reaim == 0 => (computer.approachSteps-profile.reaction)%profile.reaim != 0|1	
+untriaged	internal/core/computer.go|package|arithmetic|(CourtHeight - 1) / 2.0 => (CourtHeight - 1) * 2.0|1	
+untriaged	internal/core/computer.go|package|arithmetic|1.0 / (1 << 53) => 1.0 * (1 << 53)|1	
+untriaged	internal/core/computer.go|package|arithmetic|CourtHeight - 1 => CourtHeight + 1|1	
+untriaged	internal/core/computer.go|package|arithmetic|PaddleHeight - 1 => PaddleHeight + 1|1	
+untriaged	internal/core/computer.go|reflectEvery|arithmetic|CourtHeight-1 => CourtHeight + 1|1	
+untriaged	internal/core/computer.go|reflectEvery|conditional boundary|folded < 0 => folded <= 0|1	
+untriaged	internal/core/computer.go|reflectEvery|conditional boundary|folded > CourtHeight-1 => folded >= CourtHeight-1|1	
+untriaged	internal/core/computer.go|reflectOnce|arithmetic|2*(CourtHeight-1) - row => 2*(CourtHeight-1) + row|1	
+untriaged	internal/core/computer.go|reflectOnce|arithmetic|2*(CourtHeight-1) => 2 / (CourtHeight - 1)|1	
+untriaged	internal/core/computer.go|reflectOnce|arithmetic|CourtHeight-1 => CourtHeight + 1|1	
+untriaged	internal/core/computer.go|reflectOnce|arithmetic|CourtHeight-1 => CourtHeight + 1|2	
+untriaged	internal/core/computer.go|reflectOnce|call deletion|min(max(row, 0), float64(CourtHeight-1)) => min(row, float64(CourtHeight-1))|1	
+untriaged	internal/core/computer.go|reflectOnce|conditional boundary|row < 0 => row <= 0|1	
+untriaged	internal/core/computer.go|reflectOnce|conditional boundary|row > CourtHeight-1 => row >= CourtHeight-1|1	
+untriaged	internal/core/computer.go|reflectOnce|conditional negation|row < 0 => row >= 0|1	
+untriaged	internal/core/computer.go|reflectOnce|conditional negation|row > CourtHeight-1 => row <= CourtHeight-1|1	
+untriaged	internal/core/gameover.go|(matchState).winner|conditional boundary|match.score.left >= winning => match.score.left > winning|1	
+untriaged	internal/core/gameover.go|(matchState).winner|conditional boundary|match.score.right >= winning => match.score.right > winning|1	
+untriaged	internal/core/gameover.go|(matchState).winner|conditional negation|match.score.left >= winning => match.score.left < winning|1	
+untriaged	internal/core/gameover.go|(matchState).winner|conditional negation|match.score.right >= winning => match.score.right < winning|1	
+untriaged	internal/core/gameover.go|gameOverChangeSetup|statement deletion|model.chain = chain{} => <deleted>|1	
+untriaged	internal/core/gameover.go|gameOverChangeSetup|statement deletion|model.draft = finished.settings => <deleted>|1	
+untriaged	internal/core/gameover.go|gameOverRematch|increment swap|model.chain.position++ => model.chain.position--|1	
+untriaged	internal/core/gameover.go|gameOverRematch|statement deletion|model.chain.position++ => <deleted>|1	
+untriaged	internal/core/match.go|(ball).scorer|arithmetic|CourtWidth-1 => CourtWidth + 1|1	
+untriaged	internal/core/match.go|(ball).scorer|conditional boundary|current.x < 0 => current.x <= 0|1	
+untriaged	internal/core/match.go|(ball).scorer|conditional boundary|current.x > CourtWidth-1 => current.x >= CourtWidth-1|1	
+untriaged	internal/core/match.go|(ball).scorer|conditional negation|current.x < 0 => current.x >= 0|1	
+untriaged	internal/core/match.go|(ball).scorer|conditional negation|current.x > CourtWidth-1 => current.x <= CourtWidth-1|1	
+untriaged	internal/core/match.go|(countdownContinuation).startsServe|boolean literal|false => true|2	
+untriaged	internal/core/match.go|advanceCountdown|increment swap|match.stepCount++ => match.stepCount--|1	
+untriaged	internal/core/match.go|advanceCountdown|statement deletion|match.resumeComputer() => <deleted>|1	
+untriaged	internal/core/match.go|advanceCountdown|statement deletion|match.startServeApproach() => <deleted>|1	
+untriaged	internal/core/match.go|advanceCountdown|statement deletion|match.stepCount++ => <deleted>|1	
+untriaged	internal/core/match.go|advanceRally|increment swap|match.stepCount++ => match.stepCount--|1	
+untriaged	internal/core/match.go|package|arithmetic|(CourtHeight - 1) / 2.0 => (CourtHeight - 1) * 2.0|1	
+untriaged	internal/core/match.go|package|arithmetic|(CourtHeight - PaddleHeight) / 2 => (CourtHeight - PaddleHeight) * 2|1	
+untriaged	internal/core/match.go|package|arithmetic|(CourtWidth - 1) / 2.0 => (CourtWidth - 1) * 2.0|1	
+untriaged	internal/core/match.go|package|arithmetic|CourtHeight - 1 => CourtHeight + 1|1	
+untriaged	internal/core/match.go|package|arithmetic|CourtHeight - PaddleHeight => CourtHeight + PaddleHeight|1	
+untriaged	internal/core/match.go|package|arithmetic|CourtHeight - PaddleHeight => CourtHeight + PaddleHeight|2	
+untriaged	internal/core/match.go|package|arithmetic|CourtWidth - 1 => CourtWidth + 1|1	
+untriaged	internal/core/match.go|package|arithmetic|CourtWidth - 3 => CourtWidth + 3|1	
+untriaged	internal/core/match.go|scoredPoint|statement deletion|match.computer.endApproach() => <deleted>|1	
+untriaged	internal/core/match.go|scoredPoint|statement deletion|match.feedback = FeedbackNone => <deleted>|1	
+untriaged	internal/core/pause.go|(*matchState).suspendComputer|statement deletion|match.computer.suspend() => <deleted>|1	
+untriaged	internal/core/pause.go|(Model).BallVisible|boolean literal|false => true|1	
+untriaged	internal/core/pause.go|(Model).BallVisible|boolean literal|false => true|2	
+untriaged	internal/core/pause.go|(Model).BallVisible|boolean literal|false => true|3	
+untriaged	internal/core/pause.go|(Model).BallVisible|boolean literal|true => false|1	
+untriaged	internal/core/pause.go|(Model).BallVisible|conditional negation|phase.continuation == continuationResumeRally => phase.continuation != continuationResumeRally|1	
+untriaged	internal/core/pause.go|resumeMatch|statement deletion|match.suspendComputer() => <deleted>|1	
+untriaged	internal/core/pause.go|resumedContinuation|call deletion|resumedContinuation(suspended.suspended) => suspended.suspended|1	
+untriaged	internal/core/pause.go|returnToTitle|statement deletion|model.chain = chain{} => <deleted>|1	
+untriaged	internal/core/pause.go|togglePause|call deletion|resumeMatch(model, match, phase) => match|1	
+untriaged	internal/core/pause.go|togglePause|call deletion|resumeMatch(model, match, phase) => model|1	
+untriaged	internal/core/pause.go|togglePause|call deletion|resumeMatch(model, match, phase) => phase|1	
+untriaged	internal/core/physics.go|(contactKind).isWall|boolean literal|false => true|2	
+untriaged	internal/core/physics.go|hitsPaddle|call deletion|current.y + float64(current.vy*max(0, time)) => current.y + float64(current.vy*0)|1	
+untriaged	internal/core/physics.go|hitsPaddle|call deletion|current.y + float64(current.vy*max(0, time)) => current.y + float64(current.vy*time)|1	
+untriaged	internal/core/physics.go|hitsPaddle|conditional boundary|y <= high => y < high|1	
+untriaged	internal/core/physics.go|hitsPaddle|conditional boundary|y >= low => y > low|1	
+untriaged	internal/core/physics.go|package|arithmetic|(PaddleHeight - 1) / 2.0 => (PaddleHeight - 1) * 2.0|1	
+untriaged	internal/core/physics.go|package|arithmetic|20 * math.Pi / 180 => 20 * math.Pi * 180|1	
+untriaged	internal/core/physics.go|package|arithmetic|20 * math.Pi => 20 / math.Pi|1	
+untriaged	internal/core/physics.go|package|arithmetic|65 * math.Pi / 180 => 65 * math.Pi * 180|1	
+untriaged	internal/core/physics.go|package|arithmetic|65 * math.Pi => 65 / math.Pi|1	
+untriaged	internal/core/physics.go|package|arithmetic|PaddleHeight - 1 => PaddleHeight + 1|1	
+untriaged	internal/core/physics.go|package|arithmetic|float64(StepDuration) / float64(DurationUnitsPerSecond) => float64(StepDuration) * float64(DurationUnitsPerSecond)|1	
+untriaged	internal/core/physics.go|paddleContact|call deletion|contact{kind: contactLeftPaddle, time: max(0, time), top: paddles.left} => contact{kind: contactLeftPaddle, time: time, top: paddles.left}|1	
+untriaged	internal/core/physics.go|paddleContact|call deletion|contact{kind: contactRightPaddle, time: max(0, time), top: paddles.right} => contact{kind: contactRightPaddle, time: time, top: paddles.right}|1	
+untriaged	internal/core/physics.go|paddleContact|conditional boundary|current.vx < -contactEpsilon => current.vx <= -contactEpsilon|1	
+untriaged	internal/core/physics.go|paddleContact|conditional boundary|current.vx > contactEpsilon => current.vx >= contactEpsilon|1	
+untriaged	internal/core/physics.go|paddleContact|negative inversion|-contactEpsilon => contactEpsilon|1	
+untriaged	internal/core/physics.go|reachable|arithmetic|remaining+contactEpsilon => remaining - contactEpsilon|1	
+untriaged	internal/core/physics.go|reachable|conditional boundary|time <= remaining+contactEpsilon => time < remaining+contactEpsilon|1	
+untriaged	internal/core/physics.go|reachable|conditional boundary|time >= -contactEpsilon => time > -contactEpsilon|1	
+untriaged	internal/core/physics.go|reachable|negative inversion|-contactEpsilon => contactEpsilon|1	
+untriaged	internal/core/physics.go|rebounded|call deletion|min(max(impact, -1), 1) => max(impact, -1)|1	
+untriaged	internal/core/physics.go|rebounded|call deletion|min(max(impact, -1), 1) => min(impact, 1)|1	
+untriaged	internal/core/physics.go|rebounded|negative inversion|-current.vy => current.vy|2	
+untriaged	internal/core/physics.go|rebounded|statement deletion|current.vy = -current.vy => <deleted>|2	
+untriaged	internal/core/physics.go|rebounded|statement deletion|impact = min(max(impact, -1), 1) => <deleted>|1	
+untriaged	internal/core/physics.go|sameInstant|arithmetic|one.time-other.time => one.time + other.time|1	
+untriaged	internal/core/physics.go|sameInstant|call deletion|math.Abs(one.time-other.time) <= contactEpsilon => one.time - other.time <= contactEpsilon|1	
+untriaged	internal/core/physics.go|sameInstant|conditional boundary|math.Abs(one.time-other.time) <= contactEpsilon => math.Abs(one.time-other.time) < contactEpsilon|1	
+untriaged	internal/core/physics.go|sameInstant|conditional negation|math.Abs(one.time-other.time) <= contactEpsilon => math.Abs(one.time-other.time) > contactEpsilon|1	
+untriaged	internal/core/physics.go|steppedBall|boolean literal|true => false|1	
+untriaged	internal/core/physics.go|steppedBall|call deletion|min(wall.time, paddle.time) => paddle.time|1	
+untriaged	internal/core/physics.go|steppedBall|call deletion|min(wall.time, paddle.time) => wall.time|1	
+untriaged	internal/core/physics.go|steppedBall|call deletion|sameInstant(wall, paddle) => paddle|1	
+untriaged	internal/core/physics.go|steppedBall|call deletion|sameInstant(wall, paddle) => wall|1	
+untriaged	internal/core/physics.go|steppedBall|conditional boundary|remaining <= 0 => remaining < 0|1	
+untriaged	internal/core/physics.go|steppedBall|conditional boundary|wall.time < paddle.time => wall.time <= paddle.time|1	
+untriaged	internal/core/physics.go|steppedBall|conditional negation|wall.time < paddle.time => wall.time >= paddle.time|1	
+untriaged	internal/core/physics.go|steppedBall|logical|!hasWall && !hasPaddle => !hasWall || !hasPaddle|1	
+untriaged	internal/core/physics.go|steppedBall|logical|!hasWall && hasPaddle => !hasWall || hasPaddle|1	
+untriaged	internal/core/physics.go|steppedBall|logical|hasWall && !hasPaddle => hasWall || !hasPaddle|1	
+untriaged	internal/core/physics.go|wallContact|call deletion|contact{kind: contactBottomWall, time: max(0, time)} => contact{kind: contactBottomWall, time: time}|1	
+untriaged	internal/core/physics.go|wallContact|call deletion|contact{kind: contactTopWall, time: max(0, time)} => contact{kind: contactTopWall, time: time}|1	
+untriaged	internal/core/physics.go|wallContact|conditional boundary|current.vy < -contactEpsilon => current.vy <= -contactEpsilon|1	
+untriaged	internal/core/physics.go|wallContact|conditional boundary|current.vy > contactEpsilon => current.vy >= contactEpsilon|1	
+untriaged	internal/core/physics.go|wallContact|negative inversion|-contactEpsilon => contactEpsilon|1	
+untriaged	internal/core/timing.go|(*Model).beginSequence|increment swap|model.nextToken++ => model.nextToken--|1	
+untriaged	internal/core/trig.go|cosAngle|assignment arithmetic|j -= 4 => j += 4|1	
+untriaged	internal/core/trig.go|cosAngle|boolean literal|true => false|1	
+untriaged	internal/core/trig.go|cosAngle|conditional boundary|j > 1 => j >= 1|1	
+untriaged	internal/core/trig.go|cosAngle|conditional boundary|j > 3 => j >= 3|1	
+untriaged	internal/core/trig.go|cosAngle|conditional boundary|x < 0 => x <= 0|1	
+untriaged	internal/core/trig.go|cosAngle|statement deletion|j -= 4 => <deleted>|1	
+untriaged	internal/core/trig.go|cosAngle|statement deletion|sign = true => <deleted>|1	
+untriaged	internal/core/trig.go|octant|statement deletion|j &= 7 => <deleted>|1	
+untriaged	internal/core/trig.go|package|arithmetic|4 / math.Pi => 4 * math.Pi|1	
+untriaged	internal/core/trig.go|package|negative inversion|-1.13585365213876817300e-11 => 1.13585365213876817300e-11|1	
+untriaged	internal/core/trig.go|package|negative inversion|-1.38888888888730564116e-3 => 1.38888888888730564116e-3|1	
+untriaged	internal/core/trig.go|package|negative inversion|-1.66666666666666307295e-1 => 1.66666666666666307295e-1|1	
+untriaged	internal/core/trig.go|package|negative inversion|-1.98412698295895385996e-4 => 1.98412698295895385996e-4|1	
+untriaged	internal/core/trig.go|package|negative inversion|-2.50507477628578072866e-8 => 2.50507477628578072866e-8|1	
+untriaged	internal/core/trig.go|package|negative inversion|-2.75573141792967388112e-7 => 2.75573141792967388112e-7|1	
+untriaged	internal/core/trig.go|sinAngle|assignment arithmetic|j -= 4 => j += 4|1	
+untriaged	internal/core/trig.go|sinAngle|conditional boundary|j > 3 => j >= 3|1	
+untriaged	internal/core/trig.go|sinAngle|conditional boundary|x < 0 => x <= 0|1	
+untriaged	internal/core/trig.go|sinAngle|statement deletion|j -= 4 => <deleted>|1	
+untriaged	internal/core/trig.go|sinAngle|statement deletion|sign = !sign => <deleted>|1	
+untriaged	internal/tui/gameover.go|writeCenteredInBox|arithmetic|gameOverBoxWidth-len(text) => gameOverBoxWidth + len(text)|1	
+untriaged	internal/tui/match.go|ballCell|call deletion|min(max(int(math.Floor(coordinate+0.5)), 0), limit-1) => min(int(math.Floor(coordinate + 0.5)), limit-1)|1	
+untriaged	internal/tui/match.go|countdownDigit|call deletion|rune('0' + min(max(thirds, 1), 3)) => rune('0' + max(thirds, 1))|1	
+untriaged	internal/tui/match.go|countdownDigit|call deletion|rune('0' + min(max(thirds, 1), 3)) => rune('0' + min(thirds, 3))|1	
+untriaged	internal/tui/match.go|drawCourtBorder|conditional boundary|column <= courtColumn+core.CourtWidth+1 => column < courtColumn+core.CourtWidth+1|1	
+untriaged	internal/tui/match.go|drawCourt|arithmetic|courtColumn+core.CourtWidth+1 => courtColumn + core.CourtWidth - 1|1	
+untriaged	internal/tui/match.go|drawCourt|arithmetic|courtRow+core.CourtHeight+1 => courtRow + core.CourtHeight - 1|1	
+untriaged	internal/tui/match.go|drawCourt|call deletion|rows[interiorRow(y)][interiorColumn(core.CourtWidth/2)] => rows[interiorRow(y)][core.CourtWidth / 2]|1	
+untriaged	internal/tui/match.go|drawCourt|call deletion|rows[interiorRow(y)][interiorColumn(core.CourtWidth/2)] => rows[y][interiorColumn(core.CourtWidth/2)]|1	
+untriaged	internal/tui/match.go|drawCourt|conditional boundary|y < core.CourtHeight => y <= core.CourtHeight|1	
+untriaged	internal/tui/match.go|drawCourt|conditional negation|y < core.CourtHeight => y >= core.CourtHeight|1	
+untriaged	internal/tui/match.go|drawCourt|statement deletion|drawCourtBorder(rows, courtRow+core.CourtHeight+1) => <deleted>|1	
+untriaged	internal/tui/match.go|drawCourt|statement deletion|rows[interiorRow(y)][courtColumn+core.CourtWidth+1] = '|' => <deleted>|1	
+untriaged	internal/tui/match.go|drawCourt|statement deletion|rows[interiorRow(y)][courtColumn] = '|' => <deleted>|1	
+untriaged	internal/tui/match.go|drawCourt|statement deletion|rows[interiorRow(y)][interiorColumn(core.CourtWidth/2)] = ':' => <deleted>|1	
+untriaged	internal/tui/match.go|package|arithmetic|courtRow + core.CourtHeight + 2 => courtRow + core.CourtHeight - 2|1	
+untriaged	internal/tui/match.go|package|arithmetic|courtRow + core.CourtHeight + 3 => courtRow + core.CourtHeight - 3|1	
+untriaged	internal/tui/match.go|package|arithmetic|courtRow + core.CourtHeight => courtRow - core.CourtHeight|1	
+untriaged	internal/tui/match.go|package|arithmetic|courtRow + core.CourtHeight => courtRow - core.CourtHeight|2	
+untriaged	internal/tui/match.go|writeCentered|call deletion|[]rune(text) => text|1	
+untriaged	internal/tui/match.go|writeCentered|conditional boundary|column < len(row) => column <= len(row)|1	
+untriaged	internal/tui/match.go|writeCentered|conditional boundary|column >= 0 => column > 0|1	
+untriaged	internal/tui/match.go|writeCentered|logical|column >= 0 && column < len(row) => column >= 0 || column < len(row)|1	
+untriaged	internal/tui/model.go|(Model).View|boolean literal|true => false|1	
+untriaged	internal/tui/model.go|(Model).paddling|boolean literal|false => true|3	
+untriaged	internal/tui/model.go|(Model).pauseToggle|boolean literal|false => true|1	
+untriaged	internal/tui/model.go|(Model).pauseToggle|boolean literal|false => true|2	
+untriaged	internal/tui/model.go|(Model).semanticEvent|boolean literal|false => true|1	
+untriaged	internal/tui/model.go|paddleStep|boolean literal|false => true|1	
+untriaged	internal/tui/notice.go|renderNotice|conditional boundary|height <= 0 => height < 0|1	
+untriaged	internal/tui/pause.go|drawBorder|conditional boundary|column < left+width => column <= left+width|1	
+untriaged	internal/tui/pause.go|drawBox|arithmetic|left+width => left - width|1	
+untriaged	internal/tui/pause.go|drawBox|arithmetic|left+width-1 => left + width + 1|1	
+untriaged	internal/tui/pause.go|drawBox|conditional boundary|row < top+height => row <= top+height|1	
+untriaged	internal/tui/pause.go|drawBox|conditional negation|column < left+width => column >= left+width|1	
+untriaged	internal/tui/pause.go|drawBox|statement deletion|rows[row][column] = ' ' => <deleted>|1	
+untriaged	internal/tui/pause.go|drawBox|statement deletion|rows[row][left+width-1] = '|' => <deleted>|1	
+untriaged	internal/tui/pause.go|drawPauseOverlay|arithmetic|left+5 => left - 5|1	
+untriaged	internal/tui/pause.go|drawPauseOverlay|arithmetic|left+8 => left - 8|1	
+untriaged	internal/tui/pause.go|writeText|call deletion|[]rune(text) => text|1	
+untriaged	internal/tui/pause.go|writeText|conditional boundary|at < len(row) => at <= len(row)|1	
+untriaged	internal/tui/pause.go|writeText|conditional boundary|at >= 0 => at > 0|1	
+untriaged	internal/tui/pause.go|writeText|logical|at >= 0 && at < len(row) => at >= 0 || at < len(row)|1	
+untriaged	internal/tui/setup.go|difficultyValue|call deletion|editable(difficultyName(draft.Difficulty)) => difficultyName(draft.Difficulty)|2	
+untriaged	internal/tui/setup.go|difficultyValue|call deletion|editable(difficultyName(draft.Difficulty)) => editable(draft.Difficulty)|2	
+untriaged	internal/tui/setup.go|package|arithmetic|2 + 22 + len("< Local two-player >") => 2 + 22 - len("< Local two-player >")|1	
+untriaged	internal/tui/setup.go|package|arithmetic|2 + 22 => 2 - 22|1	
+untriaged	internal/tui/setup.go|package|call deletion|2 + 22 + len("< Local two-player >") => 2 + 22 + "< Local two-player >"|1	
+untriaged	internal/tui/setup.go|renderSetup|call deletion|lipgloss.NewStyle().Border(lipgloss.ASCIIBorder()).Paddi…1c1f3d0d => strings.Join(rows, "\n")|1	
+untriaged	internal/tui/setup.go|setupRow|call deletion|fmt.Sprintf("%-*s", setupRowWidth, fmt.Sprintf("%s%-22s%…e3cc30ba => fmt.Sprintf("%s%-22s%s", marker, label, value)|1	
+untriaged	internal/tui/timer.go|(sequenceTimer).requested|statement deletion|timer.request.delay = asked.Delay => <deleted>|1	
+untriaged	internal/tui/timer.go|arm|call deletion|<-time.After(hostDuration(request.delay)) => <-hostDuration(request.delay)|1	
+untriaged	internal/tui/timer.go|arm|call deletion|<-time.After(hostDuration(request.delay)) => <-time.After(request.delay)|1	
+untriaged	internal/tui/timer.go|hostDuration|arithmetic|time.Duration(duration) * time.Second / time.Duration(co…efd33b99 => time.Duration(duration) * time.Second * time.Duration(co…1c50e402|1	
+untriaged	internal/tui/timer.go|hostDuration|arithmetic|time.Duration(duration) * time.Second => time.Duration(duration) / time.Second|1	
+untriaged	internal/tui/timer.go|hostDuration|call deletion|time.Duration(duration) * time.Second / time.Duration(co…efd33b99 => duration * time.Second / time.Duration(core.DurationUnitsPerSecond)|1	
+untriaged	internal/tui/timer.go|hostDuration|call deletion|time.Duration(duration) * time.Second / time.Duration(co…efd33b99 => time.Duration(duration) * time.Second / core.DurationUnitsPerSecond|1	

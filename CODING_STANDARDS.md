@@ -25,20 +25,9 @@ These rules apply to every Pongo build ticket.
 
 ## Formatting and static analysis
 
-Use golangci-lint v2.13.2 with `.golangci.yml`. The configuration enables `goimports` and `golines` with a 120-column target. It enables Staticcheck `SA*` checks, `errcheck`, `errorlint`, `exhaustive`, `gochecksumtype`, `gocognit`, `gocritic`, `godoclint`, `funlen`, `ineffassign`, `nilerr`, `nolintlint`, `predeclared`, `revive`, `unused`, and `whitespace`. Run `go vet` separately.
+Use the golangci-lint version pinned in `tools/go.mod` with `.golangci.yml`. The configuration enables `goimports` and `golines` with a 120-column target. It enables Staticcheck `SA*` checks, `errcheck`, `errorlint`, `exhaustive`, `gochecksumtype`, `gocognit`, `gocritic`, `godoclint`, `funlen`, `ineffassign`, `nilerr`, `nolintlint`, `predeclared`, `revive`, `unused`, and `whitespace`.
 
-Run this gate from the repository root:
-
-```sh
-golangci-lint fmt --diff --config=.golangci.yml
-go mod tidy -diff
-go vet ./...
-golangci-lint run --config=.golangci.yml ./...
-go test -race -cover ./...
-go build ./...
-```
-
-Every command must exit with status 0. The formatter must print no diff.
+Run `./scripts/gate.sh` from the repository root. It runs the format check, the tidy checks, `go vet`, the lint pass, race tests with coverage, and the build, and exits 0 only when every step passes and the formatter prints no diff.
 
 ## Deterministic tests
 

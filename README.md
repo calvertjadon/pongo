@@ -219,28 +219,15 @@ type.
 
 ## Contributing
 
-You need Go 1.27.0 or later and [golangci-lint](https://golangci-lint.run/) v2.13.2:
+You need Go 1.27.0 or later. [`CODING_STANDARDS.md`](CODING_STANDARDS.md) covers the architecture, testing, and review
+rules. Every change must pass the automated gate, which CI runs on Linux and macOS:
 
 ```sh
-go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
+./scripts/gate.sh
 ```
 
-[`CODING_STANDARDS.md`](CODING_STANDARDS.md) covers the architecture, testing, and review rules. Every change must pass
-this gate from the repository root. CI runs it on Linux and macOS:
-
-```sh
-golangci-lint fmt --diff --config=.golangci.yml
-go mod tidy -diff
-go vet ./...
-golangci-lint run --config=.golangci.yml ./...
-go test -race -cover ./...
-go build ./...
-```
-
-Every command must exit with status 0, and the formatter must print no diff.
-
-CI runs the gate on Go 1.27.0. If golangci-lint fails with `export data version` typecheck errors under a newer Go
-patch release, run the gate with `GOTOOLCHAIN=go1.27.0` exported, and reinstall golangci-lint under that toolchain.
+The script runs on the Go toolchain CI pins, downloading it on first use, and runs golangci-lint at the version pinned
+in [`tools/go.mod`](tools/go.mod), so nothing else needs installing.
 
 ### Demo recording
 
